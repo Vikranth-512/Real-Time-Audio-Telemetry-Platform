@@ -345,20 +345,3 @@ docker-compose down
 
 Access the Web Dashboard at: `http://localhost:3000`
 
-### 🔧 Hardware Setup (ESP32)
-1. **Analog Circuitry**:
-   - Stereo AUX input mixed via 2x 4.7kΩ resistors.
-   - AC coupling (1µF) and biased to 1.65V (2x 10kΩ divider).
-   - Anti-alias filter (3.3kΩ + 10nF) fed into `GPIO34 (ADC1_CH6)`.
-2. **Firmware**:
-   - Flash MicroPython to the ESP32.
-   - Upload the contents of the `micropython/` directory.
-   - Update `wifi.py` and `streamer.py` with your network and backend IP credentials.
-
-### 🧪 Running the Demo Source
-If you do not have hardware, you can simulate a live session:
-```bash
-# Requires Python 3.8+
-pip install -r backend/requirements.txt
-python demo_audio_listener.py
-```
