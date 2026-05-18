@@ -1,18 +1,37 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path
-import json
 import asyncio
-import uvicorn
+import json
+import logging
+import os
+import secrets
+import time
+import uuid
+from typing import Dict, Set
 
-from session_manager import SessionManager
-from websocket_stream import WebSocketManager
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from pydantic import ValidationError
+from sqlalchemy import select, desc, func
 
+from ingestion.schemas import AudioPayload
+from ingestion.stream_producer import StreamProducer, ACTIVE_SESSIONS_KEY
+from storage.db import async_session, AudioMetric, init_db
+import redis.asyncio as aioredis
+
+# ─── Logging ─────────────────────────────────────────────────────────────────
+LOG_LEVEL  = os.getenv("LOG_LEVEL", "WARNING").upper()
+logging.basicConfig(level=getattr(logging, LOG_LEVEL))
+logger     = logging.getLogger(__name__)
+DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
+
+REDIS_URL  = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+SESSION_TTL = 86_400  # 24 h
+
+# ─── App ─────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Audio Waveform Analyzer API")
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,224 +40,462 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize components (in-memory session manager, no DB)
-session_manager = SessionManager()
-websocket_manager = WebSocketManager(session_manager)
-
-# Serve static files (dashboard)
 BASE_DIR = Path(__file__).resolve().parent
 DIST_DIR = BASE_DIR.parent / "dashboard" / "dist"
-
 if DIST_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(DIST_DIR)), name="static")
 
+stream_producer = StreamProducer()
+redis_client    = aioredis.from_url(REDIS_URL, decode_responses=True, health_check_interval=30)
+
+# ─── Session-scoped WebSocket manager ────────────────────────────────────────
+class SessionConnectionManager:
+    """
+    Maintains a per-session set of dashboard WebSocket connections.
+    Dashboards subscribe to sessions they want to watch.
+    Publishers are separate connections and are not stored here.
+    """
+
+    def __init__(self):
+        # session_id -> set of watching dashboards
+        self._subs: Dict[str, Set[WebSocket]] = {}
+        # all dashboard connections (receive global events like session_discovered)
+        self._global: Set[WebSocket] = set()
+
+    async def connect_dashboard(self, ws: WebSocket):
+        await ws.accept()
+        self._global.add(ws)
+
+    def disconnect_dashboard(self, ws: WebSocket):
+        self._global.discard(ws)
+        # Remove from all session sets
+        for subs in self._subs.values():
+            subs.discard(ws)
+        # Clean up empty sets
+        empty = [sid for sid, s in self._subs.items() if not s]
+        for sid in empty:
+            del self._subs[sid]
+
+    def subscribe(self, session_id: str, ws: WebSocket):
+        self._subs.setdefault(session_id, set()).add(ws)
+
+    def unsubscribe(self, session_id: str, ws: WebSocket):
+        if session_id in self._subs:
+            self._subs[session_id].discard(ws)
+            if not self._subs[session_id]:
+                del self._subs[session_id]
+
+    async def broadcast_to_session(self, session_id: str, message: str):
+        """Send to all dashboards subscribed to this session."""
+        for ws in list(self._subs.get(session_id, set())):
+            try:
+                await ws.send_text(message)
+            except Exception:
+                self.disconnect_dashboard(ws)
+
+    async def broadcast_global(self, message: str):
+        """Send to all connected dashboards (session discovery events)."""
+        for ws in list(self._global):
+            try:
+                await ws.send_text(message)
+            except Exception:
+                self._global.discard(ws)
+
+    def subscriber_count(self, session_id: str) -> int:
+        return len(self._subs.get(session_id, set()))
+
+    def dashboard_count(self) -> int:
+        return len(self._global)
+
+
+manager = SessionConnectionManager()
+
+# ─── Background broadcaster (reads partitioned metrics streams) ───────────────
+async def broadcast_metrics_task():
+    """
+    Reads from audio_metrics_stream:{session_id} for all active sessions.
+    Uses the active_sessions Redis set for O(1) discovery — no KEYS/SCAN in
+    the hot path.  Refreshes the session list every 2 s.
+    """
+    logger.info("Broadcaster starting")
+    cursors: Dict[str, str] = {}  # stream_key -> last_id
+    last_session_refresh = 0.0
+
+    while True:
+        try:
+            now = time.time()
+
+            # Refresh session list every 2 seconds
+            if now - last_session_refresh > 2:
+                active = await redis_client.smembers(ACTIVE_SESSIONS_KEY)
+                for sid in active:
+                    key = f"audio_metrics_stream:{sid}"
+                    if key not in cursors:
+                        cursors[key] = "$"  # only new messages for live dashboards
+                last_session_refresh = now
+
+            if not cursors:
+                await asyncio.sleep(0.5)
+                continue
+
+            # Single XREAD across all active metric streams (non-blocking poll)
+            response = await redis_client.xread(
+                streams=cursors,
+                count=50,
+                block=200,
+            )
+
+            if not response:
+                continue
+
+            for stream_key, messages in response:
+                # stream_key is bytes or str depending on decode_responses
+                key_str = stream_key if isinstance(stream_key, str) else stream_key.decode()
+                session_id = key_str.split(":")[-1]
+
+                for msg_id, data in messages:
+                    cursors[key_str] = msg_id
+
+                    # Skip stopped sessions
+                    if await redis_client.sismember("stopped_sessions", session_id):
+                        continue
+
+                    timestamp  = float(data.get("timestamp", 0))
+                    metrics    = json.loads(data.get("full_metrics", "{}"))
+                    samples    = json.loads(data.get("samples",      "[]"))
+
+                    audio_msg = json.dumps({
+                        "type":         "audio_update",
+                        "session_id":   session_id,
+                        "timestamp":    timestamp,
+                        "samples":      samples,
+                        "metrics":      metrics,
+                        "sample_count": len(samples),
+                    })
+                    await manager.broadcast_to_session(session_id, audio_msg)
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Broadcaster error: {e}")
+            await asyncio.sleep(1)
+
+
+# ─── Idle session cleanup ─────────────────────────────────────────────────────
+async def cleanup_task():
+    """
+    Every 5 minutes: remove sessions from active_sessions whose Redis
+    session key has expired (TTL gone) or that are in stopped_sessions.
+    """
+    while True:
+        await asyncio.sleep(300)
+        try:
+            active  = await redis_client.smembers(ACTIVE_SESSIONS_KEY)
+            stopped = await redis_client.smembers("stopped_sessions")
+            stale   = active & stopped
+            if stale:
+                await redis_client.srem(ACTIVE_SESSIONS_KEY, *stale)
+                logger.info(f"Cleanup: removed {len(stale)} stale sessions")
+        except Exception as e:
+            logger.error(f"Cleanup task error: {e}")
+
+
+# ─── Startup / shutdown ───────────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
+    asyncio.create_task(broadcast_metrics_task())
+    asyncio.create_task(cleanup_task())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await stream_producer.close()
+    await redis_client.aclose()
+
+
+# ─── Static frontend ──────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the dashboard"""
     try:
-        with open("../dashboard/dist/index.html", "r") as f:
+        with open("../dashboard/dist/index.html") as f:
             return HTMLResponse(content=f.read())
     except FileNotFoundError:
-        return HTMLResponse(content="""
-        <html>
-            <body>
-                <h1>Audio Waveform Analyzer</h1>
-                <p>Dashboard not found. Please build the frontend first.</p>
-                <p>Run: cd ../dashboard && npm run build</p>
-            </body>
-        </html>
-        """)
+        return HTMLResponse(content="<h1>Dashboard missing. Run npm run build.</h1>")
 
-@app.get("/api/health")
-async def health_check():
-    """Health check endpoint"""
+
+# ─── HTTP ingest (REST fallback) ──────────────────────────────────────────────
+@app.post("/ingest")
+async def ingest_audio(payload: AudioPayload):
+    if not payload.timestamp:
+        payload.timestamp = time.time()
+    await stream_producer.push_to_stream(payload.dict())
+    return {"status": "ok"}
+
+
+# ─── Device WebSocket (publisher) ────────────────────────────────────────────
+@app.websocket("/ws/stream")
+@app.websocket("/ws/esp32")
+async def websocket_ingest(websocket: WebSocket):
+    """
+    Publisher endpoint — generates session_id + owner_token.
+    Token is returned to the device; dashboards do NOT need a token (public watch).
+    """
+    await websocket.accept()
+
+    session_id    = str(uuid.uuid4())[:8]
+    owner_token   = secrets.token_hex(16)
+    device_id     = "ws-device"
+
+    # Store session metadata in Redis with 24h TTL
+    session_key = f"session:{session_id}"
+    await redis_client.hset(session_key, mapping={
+        "owner_token": owner_token,
+        "device_id":   device_id,
+        "created_at":  str(time.time()),
+    })
+    await redis_client.expire(session_key, SESSION_TTL)
+    await redis_client.sadd(ACTIVE_SESSIONS_KEY, session_id)
+
+    # Notify all dashboards that a new session appeared
+    await manager.broadcast_global(json.dumps({
+        "type":       "session_discovered",
+        "session_id": session_id,
+        "device_id":  device_id,
+    }))
+
+    await websocket.send_text(json.dumps({
+        "type":       "session_created",
+        "session_id": session_id,
+        "token":      owner_token,
+    }))
+
+    logger.info(f"Device connected: session={session_id}")
+
+    try:
+        while True:
+            message = await websocket.receive_text()
+            try:
+                data    = json.loads(message)
+                samples = data.get("samples", [])
+
+                if samples:
+                    # Validate publisher token (device must echo token)
+                    provided_token = data.get("token", "")
+                    if provided_token and provided_token != owner_token:
+                        await websocket.close(code=4403)
+                        return
+
+                    timestamp = data.get("timestamp", time.time())
+                    payload   = AudioPayload(
+                        device_id=data.get("device_id", device_id),
+                        timestamp=timestamp,
+                        session_id=session_id,
+                        samples=samples,
+                    )
+                    await stream_producer.push_to_stream(payload.dict())
+
+            except ValidationError as ve:
+                logger.warning(f"Validation error: {ve}")
+            except json.JSONDecodeError:
+                pass
+
+    except WebSocketDisconnect:
+        logger.info(f"Device disconnected: session={session_id}")
+        # Mark stopped and notify dashboards
+        await redis_client.sadd("stopped_sessions", session_id)
+        await redis_client.srem(ACTIVE_SESSIONS_KEY, session_id)
+        await manager.broadcast_global(json.dumps({
+            "type":       "session_ended",
+            "session_id": session_id,
+        }))
+
+
+# ─── Dashboard WebSocket (viewer — public watch) ──────────────────────────────
+@app.websocket("/ws/audio")
+async def websocket_dashboard(websocket: WebSocket):
+    """
+    Single multiplexed dashboard connection.
+    Messages FROM dashboard:
+      {"type": "subscribe",   "session_id": "abc123"}
+      {"type": "unsubscribe", "session_id": "abc123"}
+    Messages TO dashboard:
+      {"type": "active_sessions", "sessions": [...]}
+      {"type": "session_discovered", "session_id": ..., "device_id": ...}
+      {"type": "session_ended",      "session_id": ...}
+      {"type": "audio_update",       "session_id": ..., "metrics": ..., ...}
+    """
+    await manager.connect_dashboard(websocket)
+
+    # On connect: send current active sessions so frontend can bootstrap
+    try:
+        active_sids = await redis_client.smembers(ACTIVE_SESSIONS_KEY)
+        stopped     = await redis_client.smembers("stopped_sessions")
+        live        = list(active_sids - stopped)
+
+        # Enrich with device_id from Redis session metadata
+        sessions_list = []
+        for sid in live:
+            info = await redis_client.hgetall(f"session:{sid}")
+            sessions_list.append({
+                "session_id": sid,
+                "device_id":  info.get("device_id", "unknown"),
+                "created_at": info.get("created_at"),
+            })
+
+        await websocket.send_text(json.dumps({
+            "type":     "active_sessions",
+            "sessions": sessions_list,
+        }))
+    except Exception as e:
+        logger.error(f"Failed to send active sessions on connect: {e}")
+
+    try:
+        while True:
+            message = await websocket.receive_text()
+            try:
+                data     = json.loads(message)
+                msg_type = data.get("type")
+
+                if msg_type == "subscribe":
+                    sid = data.get("session_id")
+                    if sid:
+                        manager.subscribe(sid, websocket)
+                        await websocket.send_text(json.dumps({
+                            "type": "subscribed", "session_id": sid
+                        }))
+
+                elif msg_type == "unsubscribe":
+                    sid = data.get("session_id")
+                    if sid:
+                        manager.unsubscribe(sid, websocket)
+
+                # Native ping/pong is handled at the WS protocol level.
+                # We only handle application-level ping for older clients.
+                elif msg_type == "ping":
+                    await websocket.send_text(json.dumps({"type": "pong"}))
+
+            except json.JSONDecodeError:
+                pass
+
+    except WebSocketDisconnect:
+        manager.disconnect_dashboard(websocket)
+
+
+# ─── REST APIs ────────────────────────────────────────────────────────────────
+
+def _compute_averages_from_rows(rows):
+    if not rows:
+        return {"avg_rms": 0.0, "avg_peak": 0.0, "avg_frequency": 0.0, "avg_bpm": 0.0}
+    rms_sum = amp_sum = bpm_sum = 0
+    count   = len(rows)
+    for r in rows:
+        rms_sum += (r.rms_energy    or 0.0)
+        amp_sum += (r.avg_amplitude or 0.0)
+        bpm_sum += (r.bpm           or 0.0)
+    avg_rms = round(rms_sum / count, 4)
+    avg_amp = round(amp_sum / count, 4)
+    avg_bpm = round(bpm_sum / count, 4)
     return {
-        "status": "healthy",
-        "connections": websocket_manager.get_connection_stats()
+        "avg_rms": avg_rms, "avg_peak": avg_amp,
+        "avg_frequency": 0.0, "avg_bpm": avg_bpm,
+        "rms": avg_rms, "peak": avg_amp, "bpm": avg_bpm, "frequency": 0.0,
     }
 
-@app.post("/api/sessions/{session_id}/stop")
-async def stop_session(session_id: str):
-    """Stop an active session (in-memory)"""
-    try:
-        ok = session_manager.end_session(session_id)
-        if not ok:
-            raise HTTPException(status_code=404, detail="Session not found")
-        return {"status": "stopped", "session_id": session_id}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/sessions/{session_id}/export")
-@app.get("/api/session/{session_id}/metrics")
-async def export_session_metrics(session_id: str, mode: str = Query(default="wave", pattern="^(wave|fft)$")):
-    """Export session with averages and full_metrics: { session_id, averages, full_metrics }"""
-    try:
-        data = session_manager.get_session_export(session_id)
-        if data is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        def _filter_averages(avgs: dict, m: str) -> dict:
-            if m == "fft":
-                keep = {
-                    "avg_peak_frequency",
-                    "avg_spectral_centroid",
-                    "avg_spectral_rolloff",
-                    "avg_spectral_flatness",
-                }
-                return {k: v for k, v in (avgs or {}).items() if k in keep}
-            return avgs or {}
-
-        def _filter_full_metrics(full_metrics: list, m: str) -> list:
-            if m != "fft":
-                return full_metrics or []
-            keep = {"peak_frequency", "spectral_centroid", "spectral_rolloff", "spectral_flatness"}
-            out = []
-            for row in full_metrics or []:
-                metrics = row.get("metrics", {}) if isinstance(row, dict) else {}
-                out.append(
-                    {
-                        "timestamp": row.get("timestamp"),
-                        "metrics": {k: metrics.get(k, 0.0) for k in keep},
-                    }
-                )
-            return out
-
-        averages = _filter_averages(data.get("averages", {}), mode)
-        full_metrics = _filter_full_metrics(data.get("full_metrics", []), mode)
-
-        return {"session_id": data["session_id"], "averages": averages, "full_metrics": full_metrics}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/session/{session_id}/averages")
-async def get_session_averages(session_id: str, mode: str = Query(default="wave", pattern="^(wave|fft)$")):
-    """Export averages only for session_averages_<session_id>.json"""
-    try:
-        data = session_manager.get_session_export(session_id)
-        if data is None:
-            raise HTTPException(status_code=404, detail="Session not found")
-        averages = data.get("averages", {}) or {}
-        if mode == "fft":
-            keep = {
-                "avg_peak_frequency",
-                "avg_spectral_centroid",
-                "avg_spectral_rolloff",
-                "avg_spectral_flatness",
-            }
-            averages = {k: v for k, v in averages.items() if k in keep}
-        return {"session_id": session_id, **averages}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/api/sessions/live")
+async def list_live_sessions():
+    """Returns sessions currently in active_sessions (not stopped)."""
+    active  = await redis_client.smembers(ACTIVE_SESSIONS_KEY)
+    stopped = await redis_client.smembers("stopped_sessions")
+    live    = active - stopped
+    result  = []
+    for sid in live:
+        info = await redis_client.hgetall(f"session:{sid}")
+        result.append({
+            "session_id": sid,
+            "device_id":  info.get("device_id", "unknown"),
+            "created_at": info.get("created_at"),
+        })
+    return {"sessions": result}
 
 
 @app.get("/api/sessions")
 async def list_sessions():
-    """Get all stored sessions (for history sidebar)."""
-    try:
-        sessions = session_manager.get_all_sessions(limit=100)
+    async with async_session() as session:
+        stmt = (
+            select(AudioMetric.session_id, func.max(AudioMetric.timestamp).label("last_timestamp"))
+            .group_by(AudioMetric.session_id)
+            .order_by(desc("last_timestamp"))
+            .limit(100)
+        )
+        result   = await session.execute(stmt)
+        sessions = [
+            {"session_id": sid, "timestamp": ts}
+            for sid, ts in result.fetchall()
+        ]
         return {"sessions": sessions}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/sessions/search")
-async def search_sessions(q: str = ""):
-    """Search sessions by session_id."""
-    try:
-        sessions = session_manager.search_session(q, limit=100)
-        return {"sessions": sessions}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/session/{session_id}")
 async def get_session(session_id: str):
-    """Load full session for display: { session_id, averages, metrics }."""
-    try:
-        row = session_manager.get_session(session_id)
-        if row is None:
+    async with async_session() as session:
+        stmt   = select(AudioMetric).where(AudioMetric.session_id == session_id).order_by(AudioMetric.timestamp)
+        result = await session.execute(stmt)
+        rows   = result.scalars().all()
+        if not rows:
             raise HTTPException(status_code=404, detail="Session not found")
+        metrics = [{"timestamp": r.timestamp, "metrics": {
+            "bpm": r.bpm, "rms": r.rms_energy, "peak": r.avg_amplitude,
+            "frequency": r.frequency, "zcr": r.zcr,
+        }} for r in rows]
+        return {"session_id": session_id, "averages": _compute_averages_from_rows(rows), "metrics": metrics}
+
+
+@app.get("/api/session/{session_id}/averages")
+async def get_session_averages(session_id: str, mode: str = Query(default="wave", pattern="^(wave|fft)$")):
+    async with async_session() as session:
+        stmt   = select(AudioMetric).where(AudioMetric.session_id == session_id)
+        result = await session.execute(stmt)
+        rows   = result.scalars().all()
+        if not rows:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"session_id": session_id, **_compute_averages_from_rows(rows)}
+
+
+@app.get("/api/session/{session_id}/export")
+@app.get("/api/sessions/{session_id}/export")
+@app.get("/api/session/{session_id}/metrics")
+async def export_session_metrics(session_id: str, mode: str = Query(default="wave", pattern="^(wave|fft)$")):
+    async with async_session() as session:
+        stmt   = select(AudioMetric).where(AudioMetric.session_id == session_id).order_by(AudioMetric.timestamp)
+        result = await session.execute(stmt)
+        rows   = result.scalars().all()
+        if not rows:
+            raise HTTPException(status_code=404, detail="Session not found")
+        metrics = [{"timestamp": r.timestamp, "metrics": {
+            "bpm": r.bpm, "rms": r.rms_energy, "peak": r.avg_amplitude,
+            "frequency": r.frequency, "zcr": r.zcr,
+        }} for r in rows]
         return {
-            "session_id": row["session_id"],
-            "averages": row.get("averages", {}),
-            "metrics": row.get("metrics", []),
+            "session_id":  session_id,
+            "averages":    _compute_averages_from_rows(rows),
+            "full_metrics": metrics,
         }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/metrics/current")
 async def get_current_metrics():
-    """Get current metrics for active sessions"""
-    try:
-        active_sessions = {}
-        for session_id in session_manager.active_sessions:
-            metrics = session_manager.get_current_metrics(session_id)
-            if metrics:
-                active_sessions[session_id] = metrics
-        return {
-            "active_sessions": active_sessions,
-            "timestamp": asyncio.get_event_loop().time()
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    active = await redis_client.smembers(ACTIVE_SESSIONS_KEY)
+    return {"active_sessions": list(active), "timestamp": time.time()}
 
-@app.websocket("/ws/audio")
-async def websocket_endpoint(websocket: WebSocket):
-    """Main WebSocket endpoint for ESP32 and dashboard connections"""
-    await websocket_manager.connect(websocket, client_type="dashboard")
-    
-    try:
-        while True:
-            message = await websocket.receive_text()
-            await websocket_manager.handle_dashboard_message(websocket, message)
-            
-    except WebSocketDisconnect:
-        websocket_manager.disconnect(websocket)
 
-@app.websocket("/ws/esp32")
-async def esp32_websocket_endpoint(websocket: WebSocket):
-    """WebSocket endpoint specifically for ESP32 connections"""
-    session_id = await websocket_manager.connect(websocket, client_type="esp32")
-    
-    if not session_id:
-        await websocket.close()
-        return
-    
-    try:
-        while True:
-            message = await websocket.receive_text()
-            await websocket_manager.handle_esp32_message(websocket, message, session_id)
-            
-    except WebSocketDisconnect:
-        websocket_manager.disconnect(websocket, session_id)
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize background tasks"""
-    # Start cleanup task
-    asyncio.create_task(websocket_manager.cleanup_inactive_sessions())
-    print("Audio Waveform Analyzer API started")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    # End all active sessions
-    for session_id in list(session_manager.active_sessions.keys()):
-        session_manager.end_session(session_id)
-    print("Audio Waveform Analyzer API shutdown")
-
-if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
+@app.post("/api/sessions/{session_id}/stop")
+async def stop_session(session_id: str):
+    await redis_client.sadd("stopped_sessions", session_id)
+    await redis_client.srem(ACTIVE_SESSIONS_KEY, session_id)
+    await manager.broadcast_global(json.dumps({
+        "type": "session_ended", "session_id": session_id
+    }))
+    logger.info(f"Session stopped via REST: {session_id}")
+    return {"status": "stopped", "session_id": session_id}

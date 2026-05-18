@@ -152,6 +152,15 @@ class MetricsEngine:
 
         return peak
 
+    def calculate_zcr(self, normalized):
+        if not normalized or len(normalized) < 2:
+            return 0.0
+        
+        arr = np.array(normalized)
+        crossings = np.nonzero(np.diff(arr > 0))[0]
+        zcr = len(crossings) / (len(normalized) - 1)
+        return float(zcr)
+
     def estimate_frequency(self, normalized):
 
         freqs, mags = self._fft_magnitude(1024)
@@ -228,6 +237,7 @@ class MetricsEngine:
                 "peak": 0.0,
                 "frequency": 0.0,
                 "bpm": 0.0,
+                "zcr": 0.0,
                 "peak_frequency": 0.0,
                 "spectral_centroid": 0.0,
                 "spectral_rolloff": 0.0,
@@ -244,6 +254,7 @@ class MetricsEngine:
                 "peak": 0.0,
                 "frequency": 0.0,
                 "bpm": 0.0,
+                "zcr": 0.0,
                 "peak_frequency": 0.0,
                 "spectral_centroid": 0.0,
                 "spectral_rolloff": 0.0,
@@ -254,6 +265,7 @@ class MetricsEngine:
 
         peak = self.calculate_peak(normalized)
         frequency = self.estimate_frequency(normalized)
+        zcr = self.calculate_zcr(normalized)
 
         self.update_energy_envelope(normalized)
         bpm = self.autocorrelation_bpm()
@@ -279,6 +291,7 @@ class MetricsEngine:
             "peak": round(peak, 3),
             "frequency": round(frequency, 2),
             "bpm": bpm,
+            "zcr": round(zcr, 4),
             "peak_frequency": round(peak_frequency, 2),
             "spectral_centroid": round(spectral_centroid, 2),
             "spectral_rolloff": round(spectral_rolloff, 2),

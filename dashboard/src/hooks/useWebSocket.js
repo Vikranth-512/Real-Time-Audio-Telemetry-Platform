@@ -1,106 +1,215 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-export const useWebSocket = (url) => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [lastMessage, setLastMessage] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('Disconnected');
-  const ws = useRef(null);
-  const reconnectTimeout = useRef(null);
-  const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
+/**
+ * useWebSocket — single multiplexed WebSocket connection.
+ *
+ * Architecture:
+ *   ONE ws connection to /ws/audio
+ *   N session subscriptions (subscribe / unsubscribe via messages)
+ *   Internal routing: incoming packets dispatched by session_id
+ *
+ * Global listeners (session_discovered, session_ended, active_sessions)
+ * are routed to all global subscribers (no session filter).
+ */
 
-  const connect = useCallback(() => {
-    try {
-      ws.current = new WebSocket(url);
-      
-      ws.current.onopen = () => {
-        setIsConnected(true);
-        setConnectionStatus('Connected');
-        reconnectAttempts.current = 0;
-        console.log('WebSocket connected');
-      };
-      
-      ws.current.onmessage = (event) => {
-        setLastMessage(event.data);
-      };
-      
-      ws.current.onclose = (event) => {
+const GLOBAL_CHANNEL = '__global__';
+
+export const useWebSocket = (url) => {
+    const [isConnected, setIsConnected]       = useState(false);
+    const [connectionStatus, setConnectionStatus] = useState('Disconnected');
+
+    const ws                 = useRef(null);
+    const reconnectTimeout   = useRef(null);
+    const reconnectAttempts  = useRef(0);
+    const maxReconnect       = 5;
+
+    // session_id -> Set<callback>  |  GLOBAL_CHANNEL -> Set<callback>
+    const subscribers = useRef(new Map());
+
+    // ── Internal dispatch ──────────────────────────────────────────────────
+    const dispatch = useCallback((raw) => {
+        let data;
+        try { data = JSON.parse(raw); } catch { return; }
+
+        const sid = data.session_id;
+
+        // Route to session-specific callbacks
+        if (sid) {
+            const set = subscribers.current.get(sid);
+            if (set) {
+                set.forEach(cb => { try { cb(data); } catch (e) { console.error(e); } });
+            }
+        }
+
+        // Global events always go to the global channel
+        const globalTypes = new Set([
+            'session_discovered', 'session_ended', 'active_sessions', 'pong',
+        ]);
+        if (!sid || globalTypes.has(data.type)) {
+            const set = subscribers.current.get(GLOBAL_CHANNEL);
+            if (set) {
+                set.forEach(cb => { try { cb(data); } catch (e) { console.error(e); } });
+            }
+        }
+    }, []);
+
+    // ── Send helper ────────────────────────────────────────────────────────
+    const send = useCallback((message) => {
+        if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+            ws.current.send(typeof message === 'string' ? message : JSON.stringify(message));
+            return true;
+        }
+        return false;
+    }, []);
+
+    // ── Connect ────────────────────────────────────────────────────────────
+    const connect = useCallback(() => {
+        try {
+            ws.current = new WebSocket(url);
+
+            ws.current.onopen = () => {
+                setIsConnected(true);
+                setConnectionStatus('Connected');
+                reconnectAttempts.current = 0;
+                console.log('[WS] Connected');
+            };
+
+            ws.current.onmessage = (event) => dispatch(event.data);
+
+            ws.current.onclose = (event) => {
+                setIsConnected(false);
+                setConnectionStatus('Disconnected');
+                if (event.code !== 1000 && reconnectAttempts.current < maxReconnect) {
+                    reconnectAttempts.current++;
+                    const delay = Math.pow(2, reconnectAttempts.current) * 1000;
+                    setConnectionStatus(`Reconnecting… (${reconnectAttempts.current}/${maxReconnect})`);
+                    reconnectTimeout.current = setTimeout(connect, delay);
+                } else if (reconnectAttempts.current >= maxReconnect) {
+                    setConnectionStatus('Connection failed');
+                }
+            };
+
+            ws.current.onerror = () => setConnectionStatus('Error');
+
+        } catch (err) {
+            console.error('[WS] Failed to connect:', err);
+            setConnectionStatus('Connection failed');
+        }
+    }, [url, dispatch]);
+
+    const disconnect = useCallback(() => {
+        clearTimeout(reconnectTimeout.current);
+        if (ws.current) {
+            ws.current.close(1000, 'User disconnect');
+            ws.current = null;
+        }
         setIsConnected(false);
         setConnectionStatus('Disconnected');
-        console.log('WebSocket disconnected:', event.code, event.reason);
-        
-        // Attempt to reconnect if not explicitly closed
-        if (event.code !== 1000 && reconnectAttempts.current < maxReconnectAttempts) {
-          reconnectAttempts.current++;
-          setConnectionStatus(`Reconnecting... (${reconnectAttempts.current}/${maxReconnectAttempts})`);
-          
-          reconnectTimeout.current = setTimeout(() => {
-            connect();
-          }, Math.pow(2, reconnectAttempts.current) * 1000); // Exponential backoff
-        } else if (reconnectAttempts.current >= maxReconnectAttempts) {
-          setConnectionStatus('Connection failed');
+        reconnectAttempts.current = 0;
+    }, []);
+
+    // ── Subscribe helpers ──────────────────────────────────────────────────
+
+    /**
+     * Subscribe to global events (session_discovered, session_ended, active_sessions).
+     * Returns an unsubscribe function.
+     */
+    const subscribe = useCallback((callback) => {
+        if (!subscribers.current.has(GLOBAL_CHANNEL)) {
+            subscribers.current.set(GLOBAL_CHANNEL, new Set());
         }
-      };
-      
-      ws.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setConnectionStatus('Error');
-      };
-      
-    } catch (error) {
-      console.error('Failed to create WebSocket connection:', error);
-      setConnectionStatus('Connection failed');
-    }
-  }, [url]);
+        subscribers.current.get(GLOBAL_CHANNEL).add(callback);
+        return () => {
+            const set = subscribers.current.get(GLOBAL_CHANNEL);
+            if (set) { set.delete(callback); if (!set.size) subscribers.current.delete(GLOBAL_CHANNEL); }
+        };
+    }, []);
 
-  const disconnect = useCallback(() => {
-    if (reconnectTimeout.current) {
-      clearTimeout(reconnectTimeout.current);
-    }
-    
-    if (ws.current) {
-      ws.current.close(1000, 'Disconnected by user');
-      ws.current = null;
-    }
-    
-    setIsConnected(false);
-    setConnectionStatus('Disconnected');
-    reconnectAttempts.current = 0;
-  }, []);
+    /**
+     * Subscribe to a specific session's audio_update packets.
+     * Sends a subscribe message to the backend and registers the callback.
+     * Returns an unsubscribe function.
+     */
+    const subscribeToSession = useCallback((sessionId, callback) => {
+        if (!subscribers.current.has(sessionId)) {
+            subscribers.current.set(sessionId, new Set());
+        }
+        subscribers.current.get(sessionId).add(callback);
 
-  const sendMessage = useCallback((message) => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      ws.current.send(message);
-      return true;
-    }
-    return false;
-  }, []);
+        // Tell backend we want this session's data
+        send({ type: 'subscribe', session_id: sessionId });
 
-  useEffect(() => {
-    connect();
-    
-    return () => {
-      disconnect();
+        return () => {
+            const set = subscribers.current.get(sessionId);
+            if (set) {
+                set.delete(callback);
+                if (!set.size) {
+                    subscribers.current.delete(sessionId);
+                    send({ type: 'unsubscribe', session_id: sessionId });
+                }
+            }
+        };
+    }, [send]);
+
+    /**
+     * Legacy raw-string subscriber (backward compat with LiveAcousticPanel).
+     * Wraps any session id callback that expects raw JSON strings.
+     */
+    const subscribeRaw = useCallback((callback) => {
+        // Subscribe to ALL sessions by intercepting before dispatch
+        // We wrap the ws.onmessage directly here for raw access
+        const legacyCb = (event) => callback(event.data);
+        if (ws.current) {
+            const prev = ws.current.onmessage;
+            ws.current.onmessage = (event) => {
+                dispatch(event.data);
+                legacyCb(event);
+            };
+        }
+        // Also wire into global subscribers as a passthrough
+        const globalCb = (data) => callback(JSON.stringify(data));
+        const sessionCb = (data) => {
+            if (data.type === 'audio_update') callback(JSON.stringify(data));
+        };
+
+        // Register as global
+        if (!subscribers.current.has(GLOBAL_CHANNEL)) {
+            subscribers.current.set(GLOBAL_CHANNEL, new Set());
+        }
+        subscribers.current.get(GLOBAL_CHANNEL).add(sessionCb);
+
+        return () => {
+            const set = subscribers.current.get(GLOBAL_CHANNEL);
+            if (set) set.delete(sessionCb);
+        };
+    }, [dispatch]);
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────
+    useEffect(() => {
+        connect();
+        return () => { disconnect(); };
+    }, [connect, disconnect]);
+
+    // Native WebSocket heartbeat via ping every 30s
+    useEffect(() => {
+        if (!isConnected) return;
+        const id = setInterval(() => {
+            if (ws.current && ws.current.readyState === WebSocket.OPEN) {
+                ws.current.ping?.(); // native WS ping (browser may ignore)
+                send({ type: 'ping' });  // application-level fallback
+            }
+        }, 30_000);
+        return () => clearInterval(id);
+    }, [isConnected, send]);
+
+    return {
+        isConnected,
+        connectionStatus,
+        send,
+        subscribe,          // global events
+        subscribeToSession, // session-scoped audio_update packets
+        subscribeRaw,       // legacy compat
+        disconnect,
+        reconnect: connect,
     };
-  }, [connect, disconnect]);
-
-  // Send ping every 30 seconds to keep connection alive
-  useEffect(() => {
-    if (!isConnected) return;
-    
-    const pingInterval = setInterval(() => {
-      sendMessage(JSON.stringify({ type: 'ping' }));
-    }, 30000);
-    
-    return () => clearInterval(pingInterval);
-  }, [isConnected, sendMessage]);
-
-  return {
-    isConnected,
-    lastMessage,
-    sendMessage,
-    connectionStatus,
-    reconnect: connect,
-    disconnect
-  };
 };

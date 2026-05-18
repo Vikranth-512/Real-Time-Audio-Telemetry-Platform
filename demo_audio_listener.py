@@ -6,14 +6,12 @@ import uuid
 import pyaudio
 import numpy as np
 
-WS_URL = "ws://localhost:8000/ws/esp32"
+WS_URL = "ws://localhost:8000/ws/stream"
 
 SAMPLE_RATE = 48000
 CHANNELS = 2
 DEVICE_INDEX = 12
 PACKET_SIZE = 128
-
-session_id = str(uuid.uuid4())
 
 OFFSET = 2048
 
@@ -65,9 +63,9 @@ def process_samples(raw):
     if rms < RMS_THRESHOLD:
         return np.full(len(samples), OFFSET, dtype=np.int16), "SILENCE"
 
-    # Safe normalization
-    if peak > 0:
-        samples = samples / peak * 1800
+    # Static scaling: map 16-bit audio (-32768 to 32767) to 12-bit audio (-2047 to 2047)
+    # This preserves relative amplitude differences between quiet and loud packets
+    samples = (samples / 32768.0) * 2047.0
 
     samples = samples + OFFSET
     samples = np.clip(samples, 0, 4095)
@@ -83,8 +81,13 @@ async def send_audio():
     async with websockets.connect(WS_URL) as ws:
 
         print("\nConnected to backend")
-        print("Session:", session_id)
 
+        # RECEIVE SESSION ID FROM SERVER
+        msg = await ws.recv()
+        data = json.loads(msg)
+
+        session_id = data["session_id"]   # USE SERVER SESSION
+        print("Assigned Session ID:", session_id)
         packet_count = 0
 
         while True:
@@ -124,9 +127,8 @@ async def send_audio():
 async def main():
 
     print("\n--- AUDIO DIAGNOSTIC STREAM ---")
-    print("Sample rate:", SAMPLE_RATE)
-    print("Packet size:", PACKET_SIZE)
-    print("RMS threshold:", RMS_THRESHOLD)
+    print("debug print")
+
 
     while True:
         try:
