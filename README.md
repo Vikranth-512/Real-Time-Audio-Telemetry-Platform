@@ -1,8 +1,6 @@
 # Audio Waveform FFT Analyzer Dashboard
 
-A comprehensive full-stack embedded and web system designed to capture analog audio, process the signal for real-time time-domain and frequency-domain analytics, and stream the data over WebSockets to a responsive web dashboard.
-
-This project demonstrates a robust, scalable architecture for multi-device real-time signal analysis. It integrates high-performance embedded audio capture, an asynchronous event-driven backend, advanced digital signal processing (DSP), and a modern React-based visualization dashboard.
+A comprehensive full-stack embedded and web system designed to capture analog audio, process the signal for real-time time-domain and frequency-domain analytics
 
 ## 🌟 Key Features
 
