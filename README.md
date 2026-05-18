@@ -66,45 +66,6 @@ This enables real-time classification of acoustic behavior, environmental instab
 
 ### Core Intelligence Modules
 
-```mermaid
-flowchart LR
-    A[Audio Stream] --> B[Frame Windowing]
-    B --> C[Feature Extraction]
-
-    C --> D1[RMS Energy]
-    C --> D2[Amplitude]
-    C --> D3[Dominant Frequency]
-    C --> D4[Zero Crossing Rate]
-
-    D1 --> E[Intelligence Layer]
-    D2 --> E
-    D3 --> E
-    D4 --> E
-
-    E --> F1[Pattern Classification]
-    E --> F2[Drift Detection]
-    E --> F3[Spike Detection]
-    E --> F4[Timeline Segmentation]
-
-    F1 --> G[Session Intelligence Report]
-    F2 --> G
-    F3 --> G
-    F4 --> G
-
-    classDef source fill:#0f172a,stroke:#38bdf8,color:#e2e8f0,stroke-width:2px;
-    classDef process fill:#111827,stroke:#818cf8,color:#f8fafc,stroke-width:2px;
-    classDef feature fill:#1e293b,stroke:#22c55e,color:#f8fafc,stroke-width:2px;
-    classDef intelligence fill:#312e81,stroke:#facc15,color:#f8fafc,stroke-width:3px;
-    classDef output fill:#3f1d2e,stroke:#fb7185,color:#f8fafc,stroke-width:3px;
-
-    class A source;
-    class B,C process;
-    class D1,D2,D3,D4 feature;
-    class E,F1,F2,F3,F4 intelligence;
-    class G output;
-```
-
-
 ### Dominant Pattern
 
 Represents the overall signal structure detected across the session timeline.
@@ -165,6 +126,45 @@ The frequency drift subsystem continuously monitors dominant spectral movement o
 - Long-term spectral stability analysis
 
 ---
+
+```mermaid
+flowchart LR
+    A[Audio Stream] --> B[Frame Windowing]
+    B --> C[Feature Extraction]
+
+    C --> D1[RMS Energy]
+    C --> D2[Amplitude]
+    C --> D3[Dominant Frequency]
+    C --> D4[Zero Crossing Rate]
+
+    D1 --> E[Intelligence Layer]
+    D2 --> E
+    D3 --> E
+    D4 --> E
+
+    E --> F1[Pattern Classification]
+    E --> F2[Drift Detection]
+    E --> F3[Spike Detection]
+    E --> F4[Timeline Segmentation]
+
+    F1 --> G[Session Intelligence Report]
+    F2 --> G
+    F3 --> G
+    F4 --> G
+
+    classDef source fill:#0f172a,stroke:#38bdf8,color:#e2e8f0,stroke-width:2px;
+    classDef process fill:#111827,stroke:#818cf8,color:#f8fafc,stroke-width:2px;
+    classDef feature fill:#1e293b,stroke:#22c55e,color:#f8fafc,stroke-width:2px;
+    classDef intelligence fill:#312e81,stroke:#facc15,color:#f8fafc,stroke-width:3px;
+    classDef output fill:#3f1d2e,stroke:#fb7185,color:#f8fafc,stroke-width:3px;
+
+    class A source;
+    class B,C process;
+    class D1,D2,D3,D4 feature;
+    class E,F1,F2,F3,F4 intelligence;
+    class G output;
+```
+
 
 ### Derived Drift Metrics
 
