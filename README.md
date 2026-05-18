@@ -22,10 +22,15 @@ The custom DSP engine (`MetricsEngine`) performs continuous processing on 1024-s
 - **Parquet Raw Storage**: Efficient columnar storage implementation for high-volume raw audio samples, optimizing disk I/O and enabling deep historical analysis.
 - **Data Export**: Dedicated API endpoints for exporting session metrics and averages in JSON and CSV formats.
 
-### 🖥️ Professional Real-Time Dashboard
-- **React + Vite Frontend**: High-performance, responsive UI crafted with a premium dark navy aesthetic.
-- **Live Visualizations**: Synchronized scrolling oscilloscope (waveform) and frequency spectrum (FFT) charts.
+### 🖥️ Professional Analytic/intelligence Metrics from Raw Audio Samples
+- **React + Vite Frontend**: High-performance, responsive UI crafted with a dark navy aesthetic.
+- **Live Visualizations**: Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
 - **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
+<img width="1833" height="825" alt="Screenshot 2026-05-18 115255" src="https://github.com/user-attachments/assets/07e05d49-ac04-474f-ac39-c776d9de76a2" />
+<img width="1840" height="628" alt="Screenshot 2026-05-18 115328" src="https://github.com/user-attachments/assets/6e67c2af-e7fd-461d-95d8-830e2803896f" />
+<img width="1828" height="586" alt="Screenshot 2026-05-18 114701" src="https://github.com/user-attachments/assets/6b4c323e-1192-4ab5-abd9-2500be9c4403" />
+
+
 
 ---
 
