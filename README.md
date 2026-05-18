@@ -6,11 +6,6 @@ This project demonstrates a robust, scalable architecture for multi-device real-
 
 ## 🌟 Key Features
 
-### 📡 Multi-Session Acoustic Telemetry
-- **Concurrent Device Streaming**: Supports multiple ESP32 or simulated devices streaming audio data simultaneously via multiplexed WebSockets.
-- **Redis Stream Architecture**: Implements a robust data pipeline utilizing Redis consumer groups for O(1) session discovery and reliable, non-blocking asynchronous data ingestion.
-- **Asynchronous Worker Pool**: Dedicated background workers dynamically spawn partitioned tasks (up to 64 concurrent sessions) to process streams without bottlenecking the FastAPI server.
-
 ### 🧮 Advanced Metrics Engine (DSP)
 The custom DSP engine (`MetricsEngine`) performs continuous processing on 1024-sample packets:
 - **Time-Domain Analysis**: RMS Energy, Peak Amplitude, Zero-Crossing Rate (ZCR).
@@ -30,8 +25,205 @@ The custom DSP engine (`MetricsEngine`) performs continuous processing on 1024-s
 <img width="1840" height="628" alt="Screenshot 2026-05-18 115328" src="https://github.com/user-attachments/assets/6e67c2af-e7fd-461d-95d8-830e2803896f" />
 <img width="1828" height="586" alt="Screenshot 2026-05-18 114701" src="https://github.com/user-attachments/assets/6b4c323e-1192-4ab5-abd9-2500be9c4403" />
 
+The Session Intelligence Report is a high-level acoustic analytics layer built on top of the real-time audio processing pipeline.
+It transforms raw waveform metrics into interpretable behavioral, spectral, and temporal observations using lightweight signal intelligence heuristics.
 
+This module continuously analyzes incoming audio frames and generates contextual insights from:
 
+RMS energy
+Peak amplitude
+Dominant frequency
+Zero Crossing Rate (ZCR)
+Temporal burst density
+Frequency drift
+Segment stability
+Activity transitions
+
+The result is a session-wide diagnostic overview capable of identifying unstable audio environments, noisy conditions, chaotic bursts, silence regions, and evolving acoustic behavior in real time.
+
+flowchart LR
+    A[Audio Stream] --> B[Frame Windowing]
+    B --> C[Feature Extraction]
+
+    C --> D1[RMS Energy]
+    C --> D2[Amplitude]
+    C --> D3[Dominant Frequency]
+    C --> D4[Zero Crossing Rate]
+
+    D1 --> E[Intelligence Layer]
+    D2 --> E
+    D3 --> E
+    D4 --> E
+
+    E --> F1[Pattern Classification]
+    E --> F2[Drift Detection]
+    E --> F3[Spike Detection]
+    E --> F4[Timeline Segmentation]
+
+    F1 --> G[Session Intelligence Report]
+    F2 --> G
+    F3 --> G
+    F4 --> G
+
+The engine derives semantic labels from statistical feature behavior.
+
+Dominant Pattern
+
+Represents the overall signal structure detected during the session.
+
+Possible states:
+
+steady
+burst-heavy
+chaotic
+quiet-dominant
+Tonality Classification
+
+Determines whether the signal is harmonically stable or noise-like.
+
+Derived from:
+
+ZCR variance
+Frequency consistency
+Harmonic continuity
+
+Possible states:
+
+clean
+balanced
+noisy
+Stability Class
+
+Measures consistency of energy and spectral behavior over time.
+
+Computed using:
+
+RMS variance
+Frequency variance
+Temporal continuity
+
+Possible states:
+
+stable
+variable
+unstable
+Activity Class
+
+Estimates overall acoustic activity intensity.
+
+Derived from:
+
+Burst density
+Energy occupancy
+Signal persistence
+
+Possible states:
+
+low
+moderate
+high
+Spike Profile
+
+Detects transient high-energy events.
+
+Detection logic includes:
+
+RMS deviation thresholds
+Sudden amplitude excursions
+Short-duration spectral anomalies
+
+Possible states:
+
+minimal-spikes
+occasional-spikes
+burst-heavy
+Drift Profile
+
+Analyzes long-term frequency movement using EMA-smoothed spectral tracking.
+
+Possible states:
+
+stable
+drifting
+unstable
+Frequency Drift Analysis
+
+The frequency drift system tracks dominant spectral movement over time.
+
+Features include:
+
+Real-time dominant frequency tracing
+EMA (Exponential Moving Average) smoothing
+Drift slope estimation
+Long-term spectral stability analysis
+Derived Drift Metrics
+Metric	Purpose
+Slope (Hz/sample)	Long-term directional frequency movement
+Burst Density	Frequency instability occurrence rate
+Variance Spread	Frequency dispersion over time
+EMA Trendline	Smoothed spectral movement estimate
+Session Timeline Segmentation
+
+The session timeline converts continuous audio into classified behavioral regions.
+
+Each segment is categorized using rolling-window feature analysis.
+
+Timeline States
+State	Meaning
+Quiet	Minimal signal activity
+Stable	Consistent harmonic behavior
+Active	Elevated signal activity
+Burst-Heavy	Frequent transient spikes
+Chaotic	Highly unstable acoustic behavior
+Acoustic Intelligence Observations
+
+The system generates contextual observations from combined feature analysis.
+
+Example observations:
+
+Moderate spike activity detected
+Noisy broadband environment identified
+Significant frequency drift observed
+Chaotic acoustic segments detected
+
+Each observation is assigned a confidence score derived from:
+
+Statistical certainty
+Feature agreement
+Temporal persistence
+Distribution Analysis
+
+Histogram-based distribution analytics are generated for:
+
+RMS energy
+Amplitude
+Zero Crossing Rate (ZCR)
+
+The intelligence dashboard visualizes synchronized acoustic features over time:
+
+RMS energy trace
+Amplitude envelope
+ZCR evolution
+Spike markers
+Silence gaps
+Spectral transitions
+
+This enables rapid identification of:
+
+Acoustic instability
+Sudden transients
+Environmental noise shifts
+Silence-to-activity transitions
+Sustained harmonic regions
+Technical Characteristics
+Capability	Description
+Real-Time Processing	Continuous streaming analysis
+Lightweight Heuristics	No heavyweight ML inference required
+Stream-Oriented	Compatible with Redis stream pipelines
+Temporal Analysis	Rolling-window behavioral segmentation
+Spectral Intelligence	Frequency-aware acoustic interpretation
+Live Visualization	WebSocket-driven dashboard updates
+Session Summarization	End-of-session intelligence synthesis
 ---
 
 ## 🏗️ System Architecture
