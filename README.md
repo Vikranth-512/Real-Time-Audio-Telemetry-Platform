@@ -1,105 +1,149 @@
 # Audio Waveform FFT Analyzer Dashboard
 
-A complete embedded + web system that captures analog audio from a source, processes the signal to detect waveform 
-characteristics,and streams the data in real time with time and frequecy domain analytics over Wi-Fi to a web dashboard.
+A comprehensive full-stack embedded and web system designed to capture analog audio, process the signal for real-time time-domain and frequency-domain analytics, and stream the data over WebSockets to a responsive web dashboard.
 
-A high-performance real-time audio visualization tool that captures raw samples, processes it using Fast Fourier Transform 
-(FFT), and renders both waveform and frequency-domain representations.
+This project demonstrates a robust, scalable architecture for multi-device real-time signal analysis. It integrates high-performance embedded audio capture, an asynchronous event-driven backend, advanced digital signal processing (DSP), and a modern React-based visualization dashboard.
 
-Designed for learning, experimentation, and real-time signal analysis, this project demonstrates the complete pipeline 
-from raw audio acquisition to frequency/time-domain visualization and analysis
+## 🌟 Key Features
 
-## Features
+### 📡 Multi-Session Acoustic Telemetry
+- **Concurrent Device Streaming**: Supports multiple ESP32 or simulated devices streaming audio data simultaneously via multiplexed WebSockets.
+- **Redis Stream Architecture**: Implements a robust data pipeline utilizing Redis consumer groups for O(1) session discovery and reliable, non-blocking asynchronous data ingestion.
+- **Asynchronous Worker Pool**: Dedicated background workers dynamically spawn partitioned tasks (up to 64 concurrent sessions) to process streams without bottlenecking the FastAPI server.
 
-- **Real-time Audio Capture**: 8kHz sampling rate with 12-bit ADC resolution,48000khz sampling rate for device audio capture
-- **Live Waveform Display**: Scrolling oscilloscope visualization
-- **Session Management**: Automatic recording and historical data storage
-- **WebSocket Streaming**: Low-latency real-time data transmission
-- **Professional Dashboard**: Dark navy theme with responsive and animated design
-- **SQLite Database**:Persistent session storage and retrieval of export functionality for session data (CSV)
-- **Exports**: exports of real time data and averages for all computed metrics 
+### 🧮 Advanced Metrics Engine (DSP)
+The custom DSP engine (`MetricsEngine`) performs continuous processing on 1024-sample packets:
+- **Time-Domain Analysis**: RMS Energy, Peak Amplitude, Zero-Crossing Rate (ZCR).
+- **Frequency-Domain Analysis (FFT)**: Peak Frequency estimation, Spectral Centroid, Spectral Rolloff (85%), and Spectral Flatness.
+- **Rhythm Detection**: Autocorrelation-based BPM calculation utilizing an energy envelope over time.
 
-### FFT-based frequency analysis
+### 💾 High-Performance Storage Layer
+- **PostgreSQL Database**: Persistent storage for downsampled time-series audio metrics and session lifecycle management, accessed asynchronously via `asyncpg`.
+- **Parquet Raw Storage**: Efficient columnar storage implementation for high-volume raw audio samples, optimizing disk I/O and enabling deep historical analysis.
+- **Data Export**: Dedicated API endpoints for exporting session metrics and averages in JSON and CSV formats.
 
-Converts time-domain audio signals into frequency spectrum
+### 🖥️ Professional Real-Time Dashboard
+- **React + Vite Frontend**: High-performance, responsive UI crafted with a premium dark navy aesthetic.
+- **Live Visualizations**: Synchronized scrolling oscilloscope (waveform) and frequency spectrum (FFT) charts.
+- **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
 
-Visualizes amplitude vs frequency in real-time
+---
 
-Real-time display of dominant frequency, spectral centroid, rolloff, flatness, 
+## 🏗️ System Architecture
 
-### Waveform visualization
+The architecture is entirely event-driven, decoupling ingestion from processing and presentation.
 
-Displays raw time-domain signal alongside FFT output
+```mermaid
+graph TD
+    %% Hardware / Ingestion
+    ESP[ESP32 MicroPython] -->|WebSocket JSON| API[FastAPI Ingest Endpoint]
+    Mock[Demo Audio Script] -->|HTTP/WS| API
+    
+    %% Redis Stream Pipeline
+    API -->|Raw Audio Payload| Redis[Redis Streams]
+    
+    %% Processing Worker
+    Redis -->|Consumer Group XREAD| Worker[Asynchronous Worker Pool]
+    Worker -->|FFT & Time-Domain| DSP[Metrics Engine]
+    DSP -->|Structured Metrics| DB[(PostgreSQL)]
+    DSP -->|Raw Samples| Parquet[(Parquet Storage)]
+    DSP -->|Broadcaster Stream| RedisMetrics[Redis Metrics Stream]
+    
+    %% Dashboard
+    RedisMetrics -->|Pub/Sub XREAD| API_WS[FastAPI Broadcaster]
+    API_WS -->|WebSocket| Dash[React Dashboard]
+    DB -->|Historical REST API| Dash
+```
 
-Useful for understanding signal characteristics
+### Flow Overview
+1. **Ingestion**: Audio devices send chunked sample arrays and tokens to the FastAPI publisher endpoint.
+2. **Buffering**: Payloads are pushed to a Redis Stream partitioned by `session_id`.
+3. **Processing**: The `StreamWorker` processes incoming batches, calculating FFT-based metrics and rhythmic patterns.
+4. **Storage**: Analyzed metrics are batch-inserted into PostgreSQL while raw samples are flushed to Parquet files.
+5. **Broadcasting**: A global async broadcaster reads processed metrics from Redis and fans them out to connected dashboard WebSockets.
 
-### Audio metrics: (averages and real time values computed)
+---
 
-- RMS (signal energy)
-- frequency
-- Peak amplitude
-- Dominant frequency (FFT)
-- Spectral centroid(FFT)
-- Spectral rolloff(FFT)
-- Spectral flatness(FFT)
-- BPM
+## 📊 Session Computation & Analysis Assumptions
 
-### Docker Setup
-Build & run
-- docker-compose up --build
+The `MetricsEngine` executes an array of computations locally, abiding by the following assumptions and constraints for accuracy and performance:
 
-Open the app
-- Frontend: http://localhost:3000
+### Baseline Normalizations
+- **ADC Scaling**: Assumes hardware feeds 12-bit audio samples centered at `2048`. The engine applies an offset and scales values to a normalized `[-1.0, 1.0]` float range.
+- **Sampling Parameters**: Default operations assume a uniform `48,000 Hz` sampling rate. Processing runs in discrete chunks (packets) of `1024` samples.
+- **Windowing**: A standard Hann Window is applied to the time-domain data prior to FFT conversion to minimize spectral leakage at the chunk boundaries.
 
+### Analysis Thresholds & Constraints
+- **Silence Gating**: An RMS threshold of `0.005` is utilized. If a packet's RMS energy falls beneath this value, the packet is flagged as silent, and all respective metrics (frequency, BPM, centroids) are zeroed out to prevent noise amplification.
+- **Frequency Bounds**: For peak frequency analysis, spectral bins are constrained between `20 Hz` and `5000 Hz` to reject DC bias (0 Hz) and extreme high-frequency hardware noise.
+- **Spectral Rolloff**: Computed dynamically targeting **85%** of the total signal energy distribution.
 
-Stop containers
-- docker-compose down
+### Rhythm (BPM) Autocorrelation
+- **Energy Envelope**: Computed sequentially across rolling buffers. A minimum history of 60 packets is required before BPM calculation initiates.
+- **Beat Constraints**: Valid peak intervals are filtered to bounds between `0.3s` and `1.5s` to strictly yield physiological or musical tempos lying between `40` and `200` BPM.
+
+### Session Aggregations
+- **Post-Session Summaries**: When exporting or querying a finalized session via the REST API, the system computes arithmetic averages spanning all collected rows for RMS energy, Peak Amplitude, and BPM to characterize the holistic session profile.
+
+---
+
+## 📁 Project Structure
+
+```text
+├── backend/              # FastAPI server & DSP Engine
+│   ├── ingestion/        # Stream producer logic
+│   ├── processing/       # MetricsEngine (FFT, BPM, ZCR)
+│   ├── storage/          # PostgreSQL (asyncpg) & Parquet raw storage
+│   ├── main.py           # API routing & WebSocket broadcaster
+│   └── worker_main.py    # Background stream consumer daemon
+├── dashboard/            # React + Vite Frontend
+│   ├── src/
+│   │   ├── components/   # UI components (Charts, Session Managers)
+│   │   └── App.jsx       # Main application routing
+│   ├── vite.config.js    # Build configuration
+├── micropython/          # ESP32 Firmware
+│   ├── main.py           # Core execution loop
+│   ├── sampler.py        # 12-bit ADC interface
+│   └── streamer.py       # WebSocket transmitter
+├── docker-compose.yml    # Infrastructure orchestration
+└── README.md             # This documentation
+```
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
+- Docker & Docker Compose
+- Node.js 16+ & Python 3.8+ (for local development)
 
-Python 3.8+ and Node.js 16+
+### 🐳 Docker Deployment (Recommended)
+The fastest way to run the entire stack (PostgreSQL, Redis, FastAPI Backend, Processing Worker, Nginx Frontend) is via Docker Compose:
 
-### Hardware Setup
+```bash
+# Build and start all services
+docker-compose up --build
 
-1. **Analog Front-End Circuit**:
-   - Stereo AUX input → 2x 4.7kΩ resistors (mixing)
-   - 1µF capacitor (AC coupling)
-   - 2x 10kΩ resistors (bias divider to 1.65V)
-   - 10µF capacitor (bias stabilization)
-   - 3.3kΩ resistor + 10nF capacitor (anti-alias filter)
-   - Connect to ESP32 GPIO34 (ADC1_CH6)
-
-2. **ESP32 Setup**:
-   - Install MicroPython firmware
-   - Upload firmware files from `micropython/` directory
-
-## Project Structure
-
-with the exclusion of docker files and demo audio capture script both of which can be found in the main directory
-
+# To stop the containers
+docker-compose down
 ```
-├── micropython/          # ESP32 firmware
-│   ├── main.py           # Main application
-│   ├── wifi.py           # WiFi management
-│   ├── sampler.py        # ADC sampling
-│   ├── streamer.py       # WebSocket streaming
-│   └── README.md         # Hardware setup guide
-├── backend/              # FastAPI server
-│   ├── main.py           # API endpoints
-│   ├── database.py       # SQLite operations
-│   ├── session_manager.py # Session lifecycle
-│   ├── metrics_engine.py # Audio processing
-│   ├── websocket_stream.py # WebSocket handling
-│   ├── requirements.txt  # Python dependencies
-│   └── README.md         # Backend documentation
-├── dashboard/            # React frontend
-│   ├── src/
-│   │   ├── components/   # React components
-│   │   ├── hooks/        # Custom hooks
-│   │   ├── App.jsx       # Main application
-│   │   └── styles.css    # Styling
-│   ├── package.json      # Dependencies
-│   ├── vite.config.js    # Build configuration
-│   └── README.md         # Frontend documentation
-└── README.md            # This file
+
+Access the Web Dashboard at: `http://localhost:3000`
+
+### 🔧 Hardware Setup (ESP32)
+1. **Analog Circuitry**:
+   - Stereo AUX input mixed via 2x 4.7kΩ resistors.
+   - AC coupling (1µF) and biased to 1.65V (2x 10kΩ divider).
+   - Anti-alias filter (3.3kΩ + 10nF) fed into `GPIO34 (ADC1_CH6)`.
+2. **Firmware**:
+   - Flash MicroPython to the ESP32.
+   - Upload the contents of the `micropython/` directory.
+   - Update `wifi.py` and `streamer.py` with your network and backend IP credentials.
+
+### 🧪 Running the Demo Source
+If you do not have hardware, you can simulate a live session:
+```bash
+# Requires Python 3.8+
+pip install -r backend/requirements.txt
+python demo_audio_listener.py
 ```
