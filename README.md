@@ -84,32 +84,7 @@ The `MetricsEngine` executes an array of computations locally, abiding by the fo
 
 ### Session Aggregations
 - **Post-Session Summaries**: When exporting or querying a finalized session via the REST API, the system computes arithmetic averages spanning all collected rows for RMS energy, Peak Amplitude, and BPM to characterize the holistic session profile.
-
----
-
-## 📁 Project Structure
-
-```text
-├── backend/              # FastAPI server & DSP Engine
-│   ├── ingestion/        # Stream producer logic
-│   ├── processing/       # MetricsEngine (FFT, BPM, ZCR)
-│   ├── storage/          # PostgreSQL (asyncpg) & Parquet raw storage
-│   ├── main.py           # API routing & WebSocket broadcaster
-│   └── worker_main.py    # Background stream consumer daemon
-├── dashboard/            # React + Vite Frontend
-│   ├── src/
-│   │   ├── components/   # UI components (Charts, Session Managers)
-│   │   └── App.jsx       # Main application routing
-│   ├── vite.config.js    # Build configuration
-├── micropython/          # ESP32 Firmware
-│   ├── main.py           # Core execution loop
-│   ├── sampler.py        # 12-bit ADC interface
-│   └── streamer.py       # WebSocket transmitter
-├── docker-compose.yml    # Infrastructure orchestration
-└── README.md             # This documentation
-```
-
----
+- 
 
 ## 🚀 Getting Started
 
