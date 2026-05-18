@@ -47,27 +47,29 @@ graph TD
     %% Redis Stream Pipeline
     API -->|Raw Audio Payload| Redis[Redis Streams]
     
-    %% Processing Worker
-    Redis -->|Consumer Group XREAD| Worker[Asynchronous Worker Pool]
-    Worker -->|FFT & Time-Domain| DSP[Metrics Engine]
+    %% Processing Worker & Stream Details
+    Redis -->|Consumer Group XREAD partitioned by Session ID| Worker[Asynchronous Worker Pool]
+    Worker -->|Partitioned Stream Tasks| WorkerTask[Session Worker Task]
+    WorkerTask -->|FFT & Time-Domain| DSP[Metrics Engine]
     DSP -->|Structured Metrics| DB[(PostgreSQL)]
     DSP -->|Raw Samples| Parquet[(Parquet Storage)]
     DSP -->|Broadcaster Stream| RedisMetrics[Redis Metrics Stream]
     
-    %% Dashboard
+    %% Dashboard & Exports
     RedisMetrics -->|Pub/Sub XREAD| API_WS[FastAPI Broadcaster]
     API_WS -->|WebSocket| Dash[React Dashboard]
     DB -->|Historical REST API| Dash
+    DB -->|Session Exports JSON/CSV| ExportAPI[Export API Endpoint]
+    ExportAPI -->|Download| Dash
 ```
 
 ### Flow Overview
 1. **Ingestion**: Audio devices send chunked sample arrays and tokens to the FastAPI publisher endpoint.
 2. **Buffering**: Payloads are pushed to a Redis Stream partitioned by `session_id`.
-3. **Processing**: The `StreamWorker` processes incoming batches, calculating FFT-based metrics and rhythmic patterns.
+3. **Processing**: The `StreamWorker` (part of the asynchronous worker pool) processes incoming stream batches using consumer groups, calculating FFT-based metrics and rhythmic patterns.
 4. **Storage**: Analyzed metrics are batch-inserted into PostgreSQL while raw samples are flushed to Parquet files.
 5. **Broadcasting**: A global async broadcaster reads processed metrics from Redis and fans them out to connected dashboard WebSockets.
-
----
+6. **Data Export**: The dashboard or external clients can request session data exports via REST API, retrieving historical session metrics and raw data in structured formats like JSON or CSV.
 
 ## 📊 Session Computation & Analysis Assumptions
 
