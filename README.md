@@ -34,6 +34,9 @@ This enables real-time classification of acoustic behavior, environmental instab
 <img width="1840" height="628" alt="Screenshot 2026-05-18 115328" src="https://github.com/user-attachments/assets/6e67c2af-e7fd-461d-95d8-830e2803896f" />
 <img width="1828" height="586" alt="Screenshot 2026-05-18 114701" src="https://github.com/user-attachments/assets/6b4c323e-1192-4ab5-abd9-2500be9c4403" />
 
+
+### Core Intelligence Modules
+
 ```mermaid
 flowchart LR
     A[Audio Stream] --> B[Frame Windowing]
@@ -72,22 +75,12 @@ flowchart LR
     class G output;
 ```
 
-# Core Intelligence Modules
 
-## Dominant Pattern
+### Dominant Pattern
 
 Represents the overall signal structure detected across the session timeline.
 
-### Possible States
-
-- `steady`
-- `burst-heavy`
-- `chaotic`
-- `quiet-dominant`
-
----
-
-## Tonality Classification
+### Tonality Classification
 
 Determines whether the signal behaves harmonically or resembles broadband noise.
 
@@ -97,15 +90,7 @@ Determines whether the signal behaves harmonically or resembles broadband noise.
 - Frequency consistency
 - Harmonic continuity
 
-### Possible States
-
-- `clean`
-- `balanced`
-- `noisy`
-
----
-
-## Stability Class
+### Stability Class
 
 Measures long-term consistency of spectral and energy behavior.
 
@@ -114,14 +99,6 @@ Measures long-term consistency of spectral and energy behavior.
 - RMS variance
 - Frequency variance
 - Temporal continuity
-
-### Possible States
-
-- `stable`
-- `variable`
-- `unstable`
-
----
 
 ## Activity Class
 
@@ -133,15 +110,7 @@ Estimates overall acoustic intensity and session occupancy.
 - Energy occupancy
 - Signal persistence
 
-### Possible States
-
-- `low`
-- `moderate`
-- `high`
-
----
-
-## Spike Profile
+### Spike Profile
 
 Detects transient high-energy acoustic events.
 
@@ -151,31 +120,15 @@ Detects transient high-energy acoustic events.
 - Sudden amplitude excursions
 - Short-duration spectral anomalies
 
-### Possible States
-
-- `minimal-spikes`
-- `occasional-spikes`
-- `burst-heavy`
-
----
-
-## Drift Profile
+### Drift Profile
 
 Tracks long-term spectral movement using EMA-smoothed dominant frequency analysis.
-
-### Possible States
-
-- `stable`
-- `drifting`
-- `unstable`
-
----
 
 # Frequency Drift Analysis
 
 The frequency drift subsystem continuously monitors dominant spectral movement over time.
 
-## Features
+### Features
 
 - Real-time dominant frequency tracing
 - EMA (Exponential Moving Average) smoothing
@@ -184,7 +137,7 @@ The frequency drift subsystem continuously monitors dominant spectral movement o
 
 ---
 
-## Derived Drift Metrics
+### Derived Drift Metrics
 
 | Metric | Description |
 |---|---|
@@ -195,7 +148,7 @@ The frequency drift subsystem continuously monitors dominant spectral movement o
 
 ---
 
-# Session Timeline Segmentation
+### Session Timeline Segmentation
 
 The session timeline converts continuous audio into classified behavioral regions using rolling-window feature analysis.
 
@@ -203,7 +156,7 @@ Each segment is dynamically categorized based on spectral activity and energy di
 
 ---
 
-## Timeline States
+### Timeline States
 
 | State | Meaning |
 |---|---|
@@ -215,11 +168,11 @@ Each segment is dynamically categorized based on spectral activity and energy di
 
 ---
 
-# Acoustic Intelligence Observations
+### Acoustic Intelligence Observations
 
 The engine generates contextual observations by combining multiple signal features and temporal metrics.
 
-## Example Observations
+### Example Observations
 
 - Moderate spike activity detected
 - Noisy broadband environment identified
@@ -228,7 +181,7 @@ The engine generates contextual observations by combining multiple signal featur
 
 ---
 
-## Observation Confidence Scoring
+### Observation Confidence Scoring
 
 Each observation is assigned a confidence score derived from:
 
@@ -238,7 +191,7 @@ Each observation is assigned a confidence score derived from:
 
 ---
 
-# Distribution Analysis
+### Distribution Analysis
 
 Histogram-based distribution analytics are generated for:
 
@@ -256,11 +209,11 @@ These distributions help identify:
 
 ---
 
-# Signal Overview Visualization
+### Signal Overview Visualization
 
 The intelligence dashboard visualizes synchronized acoustic features over time.
 
-## Visualized Metrics
+### Visualized Metrics
 
 - RMS energy trace
 - Amplitude envelope
@@ -271,7 +224,7 @@ The intelligence dashboard visualizes synchronized acoustic features over time.
 
 ---
 
-## Enables Rapid Identification Of
+### Enables Rapid Identification Of
 
 - Acoustic instability
 - Sudden transient events
@@ -281,7 +234,7 @@ The intelligence dashboard visualizes synchronized acoustic features over time.
 
 ---
 
-# Technical Characteristics
+### Technical Characteristics
 
 | Capability | Description |
 |---|---|
@@ -295,7 +248,7 @@ The intelligence dashboard visualizes synchronized acoustic features over time.
 
 ---
 
-# System Design Goals
+### System Design Goals
 
 - Low-latency streaming analysis
 - Lightweight computational footprint
@@ -303,19 +256,6 @@ The intelligence dashboard visualizes synchronized acoustic features over time.
 - Interpretable acoustic intelligence
 - Modular feature extraction pipeline
 - Extensible behavioral classification system
-
----
-
-# Typical Use Cases
-
-- Environmental sound monitoring
-- Acoustic anomaly detection
-- Noise instability analysis
-- Device audio diagnostics
-- Real-time stream health monitoring
-- Voice activity characterization
-- Embedded acoustic telemetry systems
-- Intelligent audio analytics dashboards
 
 ## 🏗️ System Architecture
 
