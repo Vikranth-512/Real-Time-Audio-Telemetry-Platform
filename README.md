@@ -124,7 +124,7 @@ Detects transient high-energy acoustic events.
 
 Tracks long-term spectral movement using EMA-smoothed dominant frequency analysis.
 
-# Frequency Drift Analysis
+### Frequency Drift Analysis
 
 The frequency drift subsystem continuously monitors dominant spectral movement over time.
 
