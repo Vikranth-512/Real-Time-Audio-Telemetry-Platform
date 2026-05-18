@@ -9,7 +9,7 @@ A comprehensive full-stack embedded and web system designed to capture analog au
 - **Live Visualizations**: Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
 - **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
 
-# Session Intelligence Engine
+### Session Intelligence Engine
 
 The Session Intelligence Engine is a high-level acoustic analytics layer built on top of the real-time audio processing pipeline.
 
