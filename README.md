@@ -2,6 +2,35 @@
 
 A comprehensive full-stack embedded and web system designed to capture analog audio, process the signal for real-time time-domain and frequency-domain analytics
 
+## 🏗️ System Architecture
+
+The architecture is entirely event-driven, decoupling ingestion from processing and presentation.
+
+```mermaid
+graph TD
+    %% Hardware / Ingestion
+    ESP[ESP32 MicroPython] -->|WebSocket JSON| API[FastAPI Ingest Endpoint]
+    Mock[Demo Audio Script] -->|HTTP/WS| API
+    
+    %% Redis Stream Pipeline
+    API -->|Raw Audio Payload| Redis[Redis Streams]
+    
+    %% Processing Worker & Stream Details
+    Redis -->|Consumer Group XREAD partitioned by Session ID| Worker[Asynchronous Worker Pool]
+    Worker -->|Partitioned Stream Tasks| WorkerTask[Session Worker Task]
+    WorkerTask -->|FFT & Time-Domain| DSP[Metrics Engine]
+    DSP -->|Structured Metrics| DB[(PostgreSQL)]
+    DSP -->|Raw Samples| Parquet[(Parquet Storage)]
+    DSP -->|Broadcaster Stream| RedisMetrics[Redis Metrics Stream]
+    
+    %% Dashboard & Exports
+    RedisMetrics -->|Pub/Sub XREAD| API_WS[FastAPI Broadcaster]
+    API_WS -->|WebSocket| Dash[React Dashboard]
+    DB -->|Historical REST API| Dash
+    DB -->|Session Exports JSON/CSV| ExportAPI[Export API Endpoint]
+    ExportAPI -->|Download| Dash
+```
+
 ## 🌟 Key Features
 
 ###  Professional Analytic/intelligence Metrics from Raw Audio Samples
@@ -256,35 +285,6 @@ The intelligence dashboard visualizes synchronized acoustic features over time.
 - Interpretable acoustic intelligence
 - Modular feature extraction pipeline
 - Extensible behavioral classification system
-
-## 🏗️ System Architecture
-
-The architecture is entirely event-driven, decoupling ingestion from processing and presentation.
-
-```mermaid
-graph TD
-    %% Hardware / Ingestion
-    ESP[ESP32 MicroPython] -->|WebSocket JSON| API[FastAPI Ingest Endpoint]
-    Mock[Demo Audio Script] -->|HTTP/WS| API
-    
-    %% Redis Stream Pipeline
-    API -->|Raw Audio Payload| Redis[Redis Streams]
-    
-    %% Processing Worker & Stream Details
-    Redis -->|Consumer Group XREAD partitioned by Session ID| Worker[Asynchronous Worker Pool]
-    Worker -->|Partitioned Stream Tasks| WorkerTask[Session Worker Task]
-    WorkerTask -->|FFT & Time-Domain| DSP[Metrics Engine]
-    DSP -->|Structured Metrics| DB[(PostgreSQL)]
-    DSP -->|Raw Samples| Parquet[(Parquet Storage)]
-    DSP -->|Broadcaster Stream| RedisMetrics[Redis Metrics Stream]
-    
-    %% Dashboard & Exports
-    RedisMetrics -->|Pub/Sub XREAD| API_WS[FastAPI Broadcaster]
-    API_WS -->|WebSocket| Dash[React Dashboard]
-    DB -->|Historical REST API| Dash
-    DB -->|Session Exports JSON/CSV| ExportAPI[Export API Endpoint]
-    ExportAPI -->|Download| Dash
-```
 
 ### Flow Overview
 1. **Ingestion**: Audio devices send chunked sample arrays and tokens to the FastAPI publisher endpoint.
