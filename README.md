@@ -25,6 +25,8 @@ The custom DSP engine (`MetricsEngine`) performs continuous processing on 1024-s
 <img width="1840" height="628" alt="Screenshot 2026-05-18 115328" src="https://github.com/user-attachments/assets/6e67c2af-e7fd-461d-95d8-830e2803896f" />
 <img width="1828" height="586" alt="Screenshot 2026-05-18 114701" src="https://github.com/user-attachments/assets/6b4c323e-1192-4ab5-abd9-2500be9c4403" />
 
+
+
 The Session Intelligence Report is a high-level acoustic analytics layer built on top of the real-time audio processing pipeline.
 It transforms raw waveform metrics into interpretable behavioral, spectral, and temporal observations using lightweight signal intelligence heuristics.
 
@@ -41,6 +43,9 @@ Activity transitions
 
 The result is a session-wide diagnostic overview capable of identifying unstable audio environments, noisy conditions, chaotic bursts, silence regions, and evolving acoustic behavior in real time.
 
+The engine derives semantic labels from statistical feature behavior.
+
+```mermaid
 flowchart LR
     A[Audio Stream] --> B[Frame Windowing]
     B --> C[Feature Extraction]
@@ -65,7 +70,18 @@ flowchart LR
     F3 --> G
     F4 --> G
 
-The engine derives semantic labels from statistical feature behavior.
+    classDef source fill:#0f172a,stroke:#38bdf8,color:#e2e8f0,stroke-width:2px;
+    classDef process fill:#111827,stroke:#818cf8,color:#f8fafc,stroke-width:2px;
+    classDef feature fill:#1e293b,stroke:#22c55e,color:#f8fafc,stroke-width:2px;
+    classDef intelligence fill:#312e81,stroke:#facc15,color:#f8fafc,stroke-width:3px;
+    classDef output fill:#3f1d2e,stroke:#fb7185,color:#f8fafc,stroke-width:3px;
+
+    class A source;
+    class B,C process;
+    class D1,D2,D3,D4 feature;
+    class E,F1,F2,F3,F4 intelligence;
+    class G output;
+```
 
 Dominant Pattern
 
