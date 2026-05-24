@@ -346,5 +346,5 @@ docker-compose up --build
 docker-compose down
 ```
 
-Access the Web Dashboard at: `http://localhost:3000`
+Access the Web Dashboard at: `http://localhost`
 
