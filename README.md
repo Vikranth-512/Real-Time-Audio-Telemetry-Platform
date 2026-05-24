@@ -346,5 +346,13 @@ docker-compose up --build
 docker-compose down
 ```
 
+<<<<<<< HEAD
 Access the Web Dashboard at: `http://localhost`
+=======
+<<<<<<< HEAD
+Access the Web Dashboard at: `http://localhost:3000`
+>>>>>>> dec7db9 (v4)
 
+=======
+Access the Web Dashboard at: `http://localhost`
+>>>>>>> 52414e4 (v4)
