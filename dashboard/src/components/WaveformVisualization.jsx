@@ -1,12 +1,18 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react'
 
-const WaveformVisualization = ({ data, isConnected, showFFT = false }) => {
+const WaveformVisualization = ({ bufferInfo, isConnected, isActiveSession, showFFT = false }) => {
 
     const canvasRef = useRef(null)
     const glRef = useRef(null)
     const bufferRef = useRef(null)
     const programRef = useRef(null)
     const animationFrameRef = useRef(null)
+    const smoothHeadRef = useRef(null)
+
+    // Pre-allocated GPU vertex buffer (avoids GC at 60fps)
+    const DISPLAY_SAMPLES = 6000   // ~0.125s at 48kHz — fast enough to feel live, slow enough to be readable
+    const vertexArrayRef = useRef(new Float32Array(DISPLAY_SAMPLES * 2))
+    const positionLocRef = useRef(null)
 
     const audioCtxRef = useRef(null)
     const analyserRef = useRef(null)
@@ -19,10 +25,9 @@ const WaveformVisualization = ({ data, isConnected, showFFT = false }) => {
 
     const [isChartReady, setIsChartReady] = useState(false)
 
-    const SAMPLE_RATE = 8000
-    const TARGET_SAMPLES_PER_PIXEL = 2
-    const MAX_WINDOW_SECONDS = 1.5
-    const MAX_SAMPLES = SAMPLE_RATE * MAX_WINDOW_SECONDS
+    // Actual capture sample rate from agent (must match agent.py SAMPLE_RATE)
+    const SAMPLE_RATE = 48000
+    // Ring buffer length set in App.jsx; DISPLAY_SAMPLES is declared at component top
 
     const FFT_SIZE = 1024
     const FFT_BARS = 96
@@ -328,6 +333,11 @@ void main(){
         gl.clearColor(0, 0, 0, 0)
         gl.clear(gl.COLOR_BUFFER_BIT)
 
+        // Cache the attribute location once — avoids a shader lookup every frame
+        positionLocRef.current = gl.getAttribLocation(program, "position")
+        gl.enableVertexAttribArray(positionLocRef.current)
+        gl.vertexAttribPointer(positionLocRef.current, 2, gl.FLOAT, false, 0, 0)
+
         /* ---------- FFT INIT ---------- */
 
         if (showFFT) {
@@ -346,7 +356,11 @@ void main(){
 
     const updateChart = useCallback(() => {
 
-        if (!isChartReady || data.length === 0) return
+        if (!isChartReady || !bufferInfo || !bufferInfo.buffer) return
+
+        const { buffer, indexRef } = bufferInfo;
+        const N = buffer.length;
+        const head = indexRef.current;
 
         if (showFFT) {
 
@@ -355,21 +369,19 @@ void main(){
                 const audioCtx = audioCtxRef.current
                 const analyser = analyserRef.current
 
-                const buffer = audioCtx.createBuffer(1, FFT_SIZE, SAMPLE_RATE)
+                const audioBuffer = audioCtx.createBuffer(1, FFT_SIZE, SAMPLE_RATE)
 
-                const channel = buffer.getChannelData(0)
+                const channel = audioBuffer.getChannelData(0)
 
-                const start = data.length - FFT_SIZE
+                const startIdx = (head - FFT_SIZE + N) % N
 
                 for (let i = 0; i < FFT_SIZE; i++) {
-
-                    channel[i] = (data[start + i] - 2048) / 2048
-
+                    channel[i] = buffer[(startIdx + i) % N]
                 }
 
                 const source = audioCtx.createBufferSource()
 
-                source.buffer = buffer
+                source.buffer = audioBuffer
                 source.connect(analyser)
                 source.start()
 
@@ -402,127 +414,82 @@ void main(){
             glRef.current.viewport(0, 0, canvas.width, canvas.height)
         }
 
-        const canvasWidth = canvas.clientWidth
+        // ── Spring physics: smoothly track the network write head ─────────────
+        // Lerp 0.08: gentle enough to absorb 1024-sample packet bursts but
+        // aggressive enough to stay within ~2 frames of true latency.
+        let currentSmoothHead = smoothHeadRef.current
+        if (currentSmoothHead === null) currentSmoothHead = head
 
-        const visibleSamples = canvasWidth * TARGET_SAMPLES_PER_PIXEL
+        let diff = head - currentSmoothHead
+        if (diff < -N / 2) diff += N
+        if (diff > N / 2) diff -= N
 
-        const samples = data.slice(-Math.min(visibleSamples, MAX_SAMPLES))
+        currentSmoothHead = (currentSmoothHead + diff * 0.08) % N
+        if (currentSmoothHead < 0) currentSmoothHead += N
+        smoothHeadRef.current = currentSmoothHead
+        const displayHead = Math.floor(currentSmoothHead)
 
-        const bucketSize = Math.max(1, Math.floor(samples.length / canvasWidth))
+        // ── Fill pre-allocated vertex array — zero heap allocations ──────────
+        // Precompute the ring-buffer start offset once outside the inner loop.
+        const D = DISPLAY_SAMPLES
+        const startOffset = (displayHead - D + 1 + N * Math.ceil(D / N + 1)) % N
+        const verts = vertexArrayRef.current
+        const xScale = 2 / D
 
-        const vertices = []
-
-        let prevY = null
-
-        for (let i = 0; i < samples.length; i += bucketSize) {
-
-            let min = Infinity
-            let max = -Infinity
-
-            const end = Math.min(i + bucketSize, samples.length)
-
-            for (let j = i; j < end; j++) {
-
-                const v = (samples[j] - 2048) / 2048
-
-                if (v < min) min = v
-                if (v > max) max = v
-
-            }
-
-            const x = (i / samples.length) * 2 - 1
-
-            /* midpoint waveform */
-            const mid = (min + max) * 0.5
-
-            /* temporal smoothing for oscilloscope look */
-            let smooth
-
-            if (prevY === null) {
-
-                smooth = mid
-
-            } else {
-
-                smooth = prevY * 0.7 + mid * 0.3
-
-            }
-
-            prevY = smooth
-
-            vertices.push(x, smooth)
-
+        for (let i = 0; i < D; i++) {
+            verts[i * 2]     = i * xScale - 1                // x ∈ [-1, 1]
+            verts[i * 2 + 1] = buffer[(startOffset + i) % N] // y = sample
         }
 
         if (glRef.current) {
-
             const gl = glRef.current
-
-            const vertexArray = new Float32Array(vertices)
-
             gl.bindBuffer(gl.ARRAY_BUFFER, bufferRef.current)
-            gl.bufferData(gl.ARRAY_BUFFER, vertexArray, gl.DYNAMIC_DRAW)
-
-            const position = gl.getAttribLocation(programRef.current, "position")
-
-            gl.enableVertexAttribArray(position)
-
-            gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0)
-
+            gl.bufferData(gl.ARRAY_BUFFER, verts, gl.DYNAMIC_DRAW)
+            gl.enableVertexAttribArray(positionLocRef.current)
+            gl.vertexAttribPointer(positionLocRef.current, 2, gl.FLOAT, false, 0, 0)
             gl.clearColor(0, 0, 0, 0)
             gl.clear(gl.COLOR_BUFFER_BIT)
+            gl.drawArrays(gl.LINE_STRIP, 0, D)
+        }
 
-
-
-            const vertexCount = vertexArray.length / 2
-
-            if (vertexCount === 0) return
-
-            if (showFFT) {
-
-                gl.drawArrays(gl.LINES, 0, vertexCount)
-
-            } else {
-
-                gl.drawArrays(gl.LINE_STRIP, 0, vertexCount)
-
-            }
-
-            }
-
-        
-
-    }, [data, isChartReady, showFFT, renderFft])
+    }, [bufferInfo, isChartReady, showFFT, renderFft])
 
     /* -------------------------------------------------- */
-    /* ANIMATION LOOP */
+    /* ANIMATION LOOP                                       */
     /* -------------------------------------------------- */
 
     useEffect(() => {
 
-        if (!isConnected) return
-
-        const animate = () => {
-
-            updateChart()
-
-            animationFrameRef.current = requestAnimationFrame(animate)
-
+        if (!isConnected || !isActiveSession) {
+            smoothHeadRef.current = null // reset physics when stopped
+            if (glRef.current) {
+                glRef.current.clearColor(0, 0, 0, 0)
+                glRef.current.clear(glRef.current.COLOR_BUFFER_BIT)
+            }
+            if (fftCanvasRef.current) {
+                const ctx = fftCanvasRef.current.getContext('2d')
+                if (ctx) ctx.clearRect(0, 0, fftCanvasRef.current.width, fftCanvasRef.current.height)
+            }
+            return
         }
 
-        animate()
+        // No manual FPS throttle — we call updateChart() directly on every rAF.
+        // The browser already schedules rAF at vsync (60/120Hz). Adding a manual
+        // elapsed check introduces variable lag that manifests as intermittent jitter.
+        const animate = () => {
+            animationFrameRef.current = requestAnimationFrame(animate)
+            updateChart()
+        }
+
+        animationFrameRef.current = requestAnimationFrame(animate)
 
         return () => {
-
             if (animationFrameRef.current) {
-
                 cancelAnimationFrame(animationFrameRef.current)
-
             }
-
         }
 
-    }, [isConnected, data, updateChart])
+    }, [isConnected, isActiveSession, bufferInfo, updateChart])
 
     /* -------------------------------------------------- */
 
@@ -556,7 +523,7 @@ void main(){
                 }}
             />
 
-            {!isConnected && (
+            {(!isConnected || !isActiveSession) && (
 
                 <div style={{
                     position: 'absolute',

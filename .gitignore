@@ -66,6 +66,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+!.env.production
 
 # =========================
 # IDEs & Editors

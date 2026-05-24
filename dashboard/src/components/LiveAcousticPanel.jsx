@@ -125,13 +125,14 @@ const LiveAcousticPanel = ({ subscribe, activeSessionId }) => {
             <div className="assumptions-badges" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', minHeight: '32px' }}>
                 {assumptions.map((a, i) => (
                     <span key={i} style={{
-                        background: 'rgba(110, 193, 255, 0.15)',
-                        color: '#CFEFFF',
-                        padding: '4px 10px',
-                        borderRadius: '20px',
-                        fontSize: '0.85rem',
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        color: 'rgba(255, 255, 255, 0.5)',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '0.75rem',
                         fontWeight: '500',
-                        border: '1px solid rgba(110, 193, 255, 0.3)'
+                        letterSpacing: '0.5px',
+                        textTransform: 'uppercase'
                     }}>
                         {a}
                     </span>

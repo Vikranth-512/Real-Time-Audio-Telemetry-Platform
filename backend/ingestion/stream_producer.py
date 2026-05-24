@@ -30,8 +30,8 @@ class StreamProducer:
             "samples": json.dumps(payload.get("samples", []))
         }
 
-        # MAXLEN keeps per-session memory bounded (~2000 packets max)
-        await self.redis.xadd(stream_key, message, maxlen=2000, approximate=True)
+        # MAXLEN keeps per-session memory bounded (~50 packets max, approx 2 seconds at 25 FPS)
+        await self.redis.xadd(stream_key, message, maxlen=50, approximate=True)
 
         # Register session for discovery (cheap SADD is idempotent)
         await self.redis.sadd(ACTIVE_SESSIONS_KEY, session_id)

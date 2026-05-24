@@ -37,8 +37,6 @@ class MetricsEngine:
 
         data = np.array(list(self.sample_buffer)[-n:], dtype=float)
 
-        data = (data - self.OFFSET) * self.SCALE
-
         data = data - np.mean(data)
 
         data = np.concatenate(([0], np.diff(data)))
@@ -126,8 +124,8 @@ class MetricsEngine:
 
         return float(geo / arith)
 
-    def _normalize(self, samples: List[int]):
-        return [(s - self.OFFSET) * self.SCALE for s in samples]
+    def _normalize(self, samples: List[float]):
+        return samples
 
     def calculate_rms(self, normalized):
 
@@ -229,7 +227,7 @@ class MetricsEngine:
 
         return round(bpm, 1)
 
-    def calculate_metrics(self, samples: List[int], timestamp: float) -> Dict[str, float]:
+    def calculate_metrics(self, samples: List[float], timestamp: float) -> Dict[str, float]:
 
         if not samples:
             return {
@@ -307,7 +305,7 @@ class MetricsEngine:
                 "avg_bpm": 0.0,
             }
 
-        normalized = [(s - self.OFFSET) * self.SCALE for s in self.sample_buffer]
+        normalized = list(self.sample_buffer)
 
         rms = self.calculate_rms(normalized)
         peak = self.calculate_peak(normalized)

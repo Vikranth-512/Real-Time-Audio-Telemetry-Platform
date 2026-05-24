@@ -1,0 +1,23 @@
+Windows Registry Editor Version 5.00
+
+; ─── AudioAnalyzer custom protocol handler ────────────────────────────────────
+; Per-user registration (HKCU) — no administrator privileges required.
+; Double-click this file to install, or run:
+;   reg import register_protocol.reg
+;
+; To uninstall:
+;   reg delete "HKCU\Software\Classes\audioanalyzer" /f
+
+[HKEY_CURRENT_USER\Software\Classes\audioanalyzer]
+@="URL:AudioAnalyzer Protocol"
+"URL Protocol"=""
+
+[HKEY_CURRENT_USER\Software\Classes\audioanalyzer\DefaultIcon]
+@="\"C:\\Program Files\\AudioCaptureAgent\\AudioCaptureAgent.exe\",0"
+
+[HKEY_CURRENT_USER\Software\Classes\audioanalyzer\shell]
+
+[HKEY_CURRENT_USER\Software\Classes\audioanalyzer\shell\open]
+
+[HKEY_CURRENT_USER\Software\Classes\audioanalyzer\shell\open\command]
+@="\"C:\\Program Files\\AudioCaptureAgent\\AudioCaptureAgent.exe\" \"%1\""

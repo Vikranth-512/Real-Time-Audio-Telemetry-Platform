@@ -31,6 +31,17 @@ export const useWebSocket = (url) => {
         let data;
         try { data = JSON.parse(raw); } catch { return; }
 
+        if (data.type === 'audio_update' && data.samples) {
+            // Phase 7: Stale packet rejection
+            if (data.capture_timestamp) {
+                const latency = Date.now() / 1000 - data.capture_timestamp;
+                if (latency > 0.5) return; // Drop stale packets
+                data.latency = latency;
+            }
+            // Phase 14: Avoid JSON parsing on render path (keep Float32Array instead of JS array)
+            data.samples = new Float32Array(data.samples);
+        }
+
         const sid = data.session_id;
 
         // Route to session-specific callbacks

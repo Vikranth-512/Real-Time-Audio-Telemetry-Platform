@@ -1161,4 +1161,262 @@ body {
     flex-wrap: wrap;
 }
 
+/* ══════════════════════════════════════════════════════════
+   DESKTOP AUDIO BUTTON
+══════════════════════════════════════════════════════════ */
 
+.btn-desktop {
+    background: linear-gradient(135deg, rgba(30,60,120,.85), rgba(60,20,100,.9));
+    border-color: rgba(160,100,255,.25);
+    color: #D4AAFF;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-desktop::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent 30%, rgba(160,100,255,.18), transparent 70%);
+    opacity: 0;
+    transform: translateX(-100%);
+    transition: opacity .4s ease, transform .4s ease;
+}
+
+.btn-desktop:hover::after {
+    opacity: 1;
+    transform: translateX(100%);
+}
+
+.btn-desktop:hover {
+    box-shadow: 0 8px 20px rgba(0,0,0,.5), 0 0 12px rgba(160,100,255,.35);
+    border-color: rgba(160,100,255,.45);
+}
+
+/* ══════════════════════════════════════════════════════════
+   DESKTOP STREAM MODAL
+══════════════════════════════════════════════════════════ */
+
+@keyframes modalFadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(28px) scale(.97); }
+    to   { opacity: 1; transform: translateY(0)    scale(1);   }
+}
+
+@keyframes spinCW {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes popIn {
+    0%   { transform: scale(0); opacity: 0; }
+    70%  { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.desktop-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    backdrop-filter: blur(4px);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: modalFadeIn .2s ease both;
+}
+
+.desktop-modal {
+    position: relative;
+    width: min(460px, 92vw);
+    background: linear-gradient(160deg, rgba(16,32,68,.97), rgba(8,18,40,.99));
+    border: 1px solid rgba(160,100,255,.22);
+    border-radius: 20px;
+    padding: 40px 36px 32px;
+    box-shadow: 0 24px 64px rgba(0,0,0,.7), 0 0 40px rgba(100,60,180,.15), inset 0 1px 0 rgba(255,255,255,.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    text-align: center;
+    animation: modalSlideUp .28s cubic-bezier(.22,.61,.36,1) both;
+}
+
+.desktop-modal__close {
+    position: absolute;
+    top: 14px;
+    right: 16px;
+    background: rgba(255,255,255,.06);
+    border: none;
+    border-radius: 8px;
+    color: #8FCFF9;
+    font-size: 1.1rem;
+    width: 32px;
+    height: 32px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background .2s ease, color .2s ease;
+}
+
+.desktop-modal__close:hover {
+    background: rgba(255,255,255,.12);
+    color: #E8F1FF;
+}
+
+/* Icon circle */
+.desktop-modal__icon {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    margin-bottom: 4px;
+    animation: popIn .35s cubic-bezier(.22,.61,.36,1) both;
+}
+
+.desktop-modal__icon--spin {
+    background: rgba(110,193,255,.12);
+    border: 2px solid rgba(110,193,255,.3);
+    color: #6EC1FF;
+    animation: spinCW 1.2s linear infinite;
+    font-size: 2.2rem;
+}
+
+.desktop-modal__icon--ok {
+    background: rgba(77,204,136,.12);
+    border: 2px solid rgba(77,204,136,.35);
+    color: #4DCC88;
+}
+
+.desktop-modal__icon--warn {
+    background: rgba(160,100,255,.12);
+    border: 2px solid rgba(160,100,255,.3);
+    color: #C084FC;
+}
+
+.desktop-modal__icon--err {
+    background: rgba(255,80,80,.1);
+    border: 2px solid rgba(255,80,80,.3);
+    color: #FF6B6B;
+}
+
+.desktop-modal__title {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #E8F1FF;
+    margin: 0;
+    letter-spacing: .5px;
+}
+
+.desktop-modal__desc {
+    font-size: .9rem;
+    color: #7A9ABB;
+    line-height: 1.55;
+    margin: 0;
+    max-width: 340px;
+}
+
+/* Step list */
+.desktop-modal__steps {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 4px 0;
+}
+
+.desktop-modal__step {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+    border-radius: 10px;
+    padding: 10px 14px;
+    text-align: left;
+    font-size: .87rem;
+    color: #C0D8F0;
+    line-height: 1.45;
+}
+
+.desktop-modal__step strong {
+    color: #E8F1FF;
+}
+
+.desktop-modal__step-num {
+    min-width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(160,100,255,.35), rgba(100,60,200,.4));
+    border: 1px solid rgba(160,100,255,.3);
+    color: #D4AAFF;
+    font-size: .75rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* Download button */
+.desktop-modal__btn {
+    width: 100%;
+    padding: 13px 20px;
+    border-radius: 12px;
+    border: 1px solid rgba(160,100,255,.35);
+    background: linear-gradient(135deg, rgba(100,50,180,.75), rgba(60,20,120,.85));
+    color: #E8CDFF;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: box-shadow .2s ease, transform .15s ease, background .2s ease;
+    letter-spacing: .4px;
+    margin-top: 4px;
+    position: relative;
+    overflow: hidden;
+}
+
+.desktop-modal__btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(120deg, transparent, rgba(255,255,255,.12), transparent);
+    opacity: 0;
+    transform: translateX(-100%);
+    transition: all .4s ease;
+}
+
+.desktop-modal__btn:hover::before {
+    opacity: 1;
+    transform: translateX(100%);
+}
+
+.desktop-modal__btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,0,0,.5), 0 0 16px rgba(140,80,255,.3);
+}
+
+.desktop-modal__btn:active {
+    transform: scale(.97);
+}
+
+/* SmartScreen hint */
+.desktop-modal__hint {
+    font-size: .78rem;
+    color: #4A6A8A;
+    margin: 0;
+    line-height: 1.5;
+}
+
+.desktop-modal__hint em {
+    color: #6A8AAA;
+    font-style: normal;
+    font-weight: 600;
+}

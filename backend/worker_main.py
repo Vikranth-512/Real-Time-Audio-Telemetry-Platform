@@ -107,7 +107,7 @@ class SessionConsumer:
                 stream_metric["samples"]      = json.dumps(samples)
                 await self.redis.xadd(
                     self.metrics_stream, stream_metric,
-                    maxlen=500, approximate=True
+                    maxlen=50, approximate=True
                 )
 
                 ack_ids.append(message_id)
@@ -135,6 +135,7 @@ class SessionConsumer:
     async def run(self):
         await self.ensure_consumer_group()
         last_claim_time = time.time()
+        last_diag_time = time.time()
 
         logger.info(f"[{self.session_id}] SessionConsumer started on {self.stream_key}")
 
@@ -168,13 +169,24 @@ class SessionConsumer:
                         logger.error(f"[{self.session_id}] Reclaim failed: {e}")
                     last_claim_time = now
 
+                # Real-time lag diagnostics
+                if now - last_diag_time > 5:
+                    try:
+                        xlen = await self.redis.xlen(self.stream_key)
+                        pending = await self.redis.xpending(self.stream_key, GROUP_NAME)
+                        pending_count = pending.get("pending", 0) if pending else 0
+                        logger.info(f"[{self.session_id}] DIAGNOSTICS | STREAM DEPTH: {xlen} | PENDING: {pending_count}")
+                    except Exception as e:
+                        pass
+                    last_diag_time = now
+
                 # Read new messages
                 results = await self.redis.xreadgroup(
                     groupname=GROUP_NAME,
                     consumername=self.consumer_name,
                     streams={self.stream_key: ">"},
                     count=100,
-                    block=500,
+                    block=25,
                 )
 
                 if results:

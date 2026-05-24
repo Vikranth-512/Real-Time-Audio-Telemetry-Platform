@@ -1,0 +1,28 @@
+{$PUBLIC_DOMAIN:localhost} {
+    encode gzip
+
+    # WebSocket routes → backend
+    handle /ws/* {
+        reverse_proxy backend:8000
+    }
+
+    # REST API routes → backend
+    handle /api/* {
+        reverse_proxy backend:8000
+    }
+
+    # Ingest endpoint → backend
+    handle /ingest {
+        reverse_proxy backend:8000
+    }
+
+    # Health check → backend
+    handle /health {
+        reverse_proxy backend:8000
+    }
+
+    # Everything else → frontend static server
+    handle {
+        reverse_proxy frontend:80
+    }
+}

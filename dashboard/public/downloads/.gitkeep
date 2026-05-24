@@ -1,0 +1,12 @@
+# Drop AudioCaptureAgent.exe here after building.
+#
+# Build steps:
+#   1. cd audio_capture_agent
+#   2. build.bat
+#   3. copy dist\AudioCaptureAgent.exe  ..\..\dashboard\public\downloads\
+#
+# Dev server (Vite):  http://localhost:3000/downloads/AudioCaptureAgent.exe
+# Production (nginx): https://yourdomain.com/downloads/AudioCaptureAgent.exe
+#
+# This file exists only to keep the downloads/ folder tracked by git.
+# The actual .exe is listed in .gitignore.

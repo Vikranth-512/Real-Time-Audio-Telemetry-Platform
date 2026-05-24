@@ -20,6 +20,10 @@ from ingestion.stream_producer import StreamProducer, ACTIVE_SESSIONS_KEY
 from storage.db import async_session, AudioMetric, init_db
 import redis.asyncio as aioredis
 
+# ─── Global Agent Tracking ────────────────────────────────────────────────────
+# Map agent_instance_id -> active WebSocket to kill zombies actively
+agent_sockets: Dict[str, WebSocket] = {}
+
 # ─── Logging ─────────────────────────────────────────────────────────────────
 LOG_LEVEL  = os.getenv("LOG_LEVEL", "WARNING").upper()
 logging.basicConfig(level=getattr(logging, LOG_LEVEL))
@@ -233,6 +237,8 @@ async def ingest_audio(payload: AudioPayload):
     return {"status": "ok"}
 
 
+ALLOWED_WS_ORIGINS = {os.getenv("CORS_ORIGIN", "http://localhost")}
+
 # ─── Device WebSocket (publisher) ────────────────────────────────────────────
 @app.websocket("/ws/stream")
 @app.websocket("/ws/esp32")
@@ -241,6 +247,11 @@ async def websocket_ingest(websocket: WebSocket):
     Publisher endpoint — generates session_id + owner_token.
     Token is returned to the device; dashboards do NOT need a token (public watch).
     """
+    origin = websocket.headers.get("origin")
+    if origin and origin not in ALLOWED_WS_ORIGINS:
+        await websocket.close(code=1008)
+        return
+
     await websocket.accept()
 
     session_id    = str(uuid.uuid4())[:8]
@@ -272,11 +283,54 @@ async def websocket_ingest(websocket: WebSocket):
 
     logger.info(f"Device connected: session={session_id}")
 
+    last_heartbeat = time.time()
+    active_agent_instance = None
+
     try:
         while True:
-            message = await websocket.receive_text()
+            try:
+                message = await asyncio.wait_for(websocket.receive_text(), timeout=60.0)
+                last_heartbeat = time.time()
+            except asyncio.TimeoutError:
+                logger.warning(f"Publisher heartbeat timeout: session={session_id}")
+                break
+
             try:
                 data    = json.loads(message)
+                msg_type = data.get("type")
+                
+                if msg_type == "hello":
+                    agent_version = data.get("agent_version")
+                    agent_id = data.get("agent_instance_id")
+                    stream_id = data.get("stream_instance_id")
+                    
+                    if active_agent_instance is None:
+                        active_agent_instance = agent_id
+                        
+                        # Active Zombie Killer: if another socket exists for this agent, kill it.
+                        if agent_id in agent_sockets:
+                            old_ws = agent_sockets[agent_id]
+                            if old_ws != websocket:
+                                logger.warning(f"Duplicate agent {agent_id} detected. Closing old zombie connection.")
+                                try:
+                                    await old_ws.close(code=4009)
+                                except Exception:
+                                    pass
+                        
+                        agent_sockets[agent_id] = websocket
+                        
+                        # Store current active agent for duplicate checking
+                        await redis_client.hset(session_key, "agent_instance_id", agent_id)
+                        logger.info(f"Agent handshake: v{agent_version}, instance={agent_id}, stream={stream_id}")
+                    elif active_agent_instance != agent_id:
+                        logger.error("Duplicate agent session detected in hello (mismatched ID).")
+                        await websocket.close(code=4009)
+                        return
+                    continue
+                    
+                if msg_type == "heartbeat":
+                    continue
+
                 samples = data.get("samples", [])
 
                 if samples:
@@ -284,6 +338,13 @@ async def websocket_ingest(websocket: WebSocket):
                     provided_token = data.get("token", "")
                     if provided_token and provided_token != owner_token:
                         await websocket.close(code=4403)
+                        return
+                        
+                    # Check duplicate protection
+                    agent_id = data.get("agent_instance_id")
+                    if agent_id and active_agent_instance and agent_id != active_agent_instance:
+                        logger.error("Duplicate agent session detected in audio frame.")
+                        await websocket.close(code=4009)
                         return
 
                     timestamp = data.get("timestamp", time.time())
@@ -302,6 +363,11 @@ async def websocket_ingest(websocket: WebSocket):
 
     except WebSocketDisconnect:
         logger.info(f"Device disconnected: session={session_id}")
+        
+        # Clean up agent socket map
+        if active_agent_instance and agent_sockets.get(active_agent_instance) == websocket:
+            del agent_sockets[active_agent_instance]
+
         # Mark stopped and notify dashboards
         await redis_client.sadd("stopped_sessions", session_id)
         await redis_client.srem(ACTIVE_SESSIONS_KEY, session_id)
