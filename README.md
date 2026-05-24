@@ -8,27 +8,41 @@ The architecture is entirely event-driven, decoupling ingestion from processing 
 
 ```mermaid
 graph TD
-    %% Hardware / Ingestion
-    ESP[ESP32 MicroPython] -->|WebSocket JSON| API[FastAPI Ingest Endpoint]
-    Mock[Demo Audio Script] -->|HTTP/WS| API
+    %% Audio Capture Sources
+    ESP[ESP32 MicroPython Device] -->|WebSocket JSON| API[FastAPI Ingestion Layer]
     
+    Native[Desktop Audio Capture Agent] -->|WSS Audio Stream| Caddy[Caddy Reverse Proxy]
+    Caddy -->|/ws/stream| API
+
+    %% Reverse Proxy / Frontend
+    User[React Dashboard Client] -->|HTTPS / WSS| Caddy
+    Caddy -->|Static Frontend| Frontend[React + Vite Frontend]
+
     %% Redis Stream Pipeline
     API -->|Raw Audio Payload| Redis[Redis Streams]
-    
-    %% Processing Worker & Stream Details
+
+    %% Processing Worker Pipeline
     Redis -->|Consumer Group XREAD partitioned by Session ID| Worker[Asynchronous Worker Pool]
     Worker -->|Partitioned Stream Tasks| WorkerTask[Session Worker Task]
-    WorkerTask -->|FFT & Time-Domain| DSP[Metrics Engine]
+
+    %% DSP / Analytics
+    WorkerTask -->|FFT + Time Domain Analysis| DSP[Metrics & Inference Engine]
+
+    %% Storage
     DSP -->|Structured Metrics| DB[(PostgreSQL)]
-    DSP -->|Raw Samples| Parquet[(Parquet Storage)]
-    DSP -->|Broadcaster Stream| RedisMetrics[Redis Metrics Stream]
-    
-    %% Dashboard & Exports
-    RedisMetrics -->|Pub/Sub XREAD| API_WS[FastAPI Broadcaster]
-    API_WS -->|WebSocket| Dash[React Dashboard]
-    DB -->|Historical REST API| Dash
-    DB -->|Session Exports JSON/CSV| ExportAPI[Export API Endpoint]
-    ExportAPI -->|Download| Dash
+    DSP -->|Raw Samples + Session Data| Parquet[(Parquet Storage)]
+
+    %% Real-Time Metrics Broadcast
+    DSP -->|Processed Metrics Stream| RedisMetrics[Redis Metrics Stream]
+    RedisMetrics -->|Pub/Sub XREAD| API_WS[FastAPI WebSocket Broadcaster]
+
+    %% Frontend Live Updates
+    API_WS -->|Realtime WebSocket Metrics| Dash[React Dashboard]
+
+    %% Historical Queries / Exports
+    DB -->|Historical Session Queries| Dash
+    DB -->|Session Export API| ExportAPI[Export API Endpoint]
+    ExportAPI -->|JSON / CSV Download| Dash
 ```
 
 ## 🌟 Key Features
