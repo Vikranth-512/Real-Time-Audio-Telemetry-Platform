@@ -52,9 +52,6 @@ graph TD
 - **Live Visualizations**: Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
 - **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
 
-<img width="1892" height="917" alt="Screenshot (197)" src="https://github.com/user-attachments/assets/bc8dfe78-e33f-4e43-a1bb-ee7c9df4e139" />
-
-
 ### Session Intelligence Engine
 
 The Session Intelligence Engine is a high-level acoustic analytics layer built on top of the real-time audio processing pipeline.
