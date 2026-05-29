@@ -80,13 +80,6 @@ class SessionConsumer:
                     ack_ids.append(message_id)
                     continue
 
-                raw_payloads.append({
-                    "device_id": device_id,
-                    "timestamp": timestamp,
-                    "session_id": session_id,
-                    "samples": samples,
-                })
-
                 metrics = self.engine.calculate_metrics(samples, timestamp)
 
                 db_metric = {
@@ -104,11 +97,22 @@ class SessionConsumer:
                 # Publish to partitioned metrics stream for broadcaster
                 stream_metric = dict(db_metric)
                 stream_metric["full_metrics"] = json.dumps(metrics)
-                stream_metric["samples"]      = json.dumps(samples)
+                stream_metric["packet_sequence"] = data.get("packet_sequence", "0")
+                stream_metric["capture_timestamp"] = data.get("capture_timestamp", str(timestamp))
+                # Pass the raw JSON string through directly — avoids expensive re-serialization
+                stream_metric["samples"]      = data.get("samples", "[]")
+                stream_metric["sample_count"] = len(samples)
                 await self.redis.xadd(
                     self.metrics_stream, stream_metric,
                     maxlen=50, approximate=True
                 )
+
+                # Prepare parquet payload without samples
+                parquet_payload = dict(db_metric)
+                parquet_payload["packet_sequence"] = int(data.get("packet_sequence", 0))
+                parquet_payload["capture_timestamp"] = float(data.get("capture_timestamp", timestamp))
+                # Add it to raw storage
+                raw_payloads.append(parquet_payload)
 
                 ack_ids.append(message_id)
 
@@ -144,6 +148,7 @@ class SessionConsumer:
                 # Exit cleanly if session was stopped
                 if self.session_id in self.stopped_cache:
                     logger.info(f"[{self.session_id}] Session stopped, consumer exiting")
+                    await self.raw_storage.finalize_session(self.session_id)
                     return
 
                 now = time.time()
@@ -199,10 +204,12 @@ class SessionConsumer:
                                 except Exception as e:
                                     logger.error(f"[{self.session_id}] XACK failed: {e}")
 
-                await self.raw_storage.flush()
+                # Periodic flush check for this session
+                await self.raw_storage.flush(self.session_id)
 
             except asyncio.CancelledError:
                 logger.info(f"[{self.session_id}] Consumer task cancelled")
+                await self.raw_storage.finalize_session(self.session_id)
                 return
 
             except ConnectionError:

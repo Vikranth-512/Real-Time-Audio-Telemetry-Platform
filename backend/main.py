@@ -165,17 +165,20 @@ async def broadcast_metrics_task():
                         continue
 
                     timestamp  = float(data.get("timestamp", 0))
-                    metrics    = json.loads(data.get("full_metrics", "{}"))
-                    samples    = json.loads(data.get("samples",      "[]"))
+                    metrics_str = data.get("full_metrics", "{}")
+                    samples_str = data.get("samples",      "[]")
+                    sample_count = data.get("sample_count", "0")
+                    packet_sequence = data.get("packet_sequence", "0")
+                    capture_timestamp = data.get("capture_timestamp", str(timestamp))
 
-                    audio_msg = json.dumps({
-                        "type":         "audio_update",
-                        "session_id":   session_id,
-                        "timestamp":    timestamp,
-                        "samples":      samples,
-                        "metrics":      metrics,
-                        "sample_count": len(samples),
-                    })
+                    # Fast-path JSON assembly avoids parsing and re-stringifying 
+                    # huge float arrays on the backend's main event loop.
+                    audio_msg = (
+                        f'{{"type":"audio_update","session_id":"{session_id}",'
+                        f'"timestamp":{timestamp},"sample_count":{sample_count},'
+                        f'"packet_sequence":{packet_sequence},"capture_timestamp":{capture_timestamp},'
+                        f'"metrics":{metrics_str},"samples":{samples_str}}}'
+                    )
                     await manager.broadcast_to_session(session_id, audio_msg)
 
         except asyncio.CancelledError:
@@ -353,6 +356,8 @@ async def websocket_ingest(websocket: WebSocket):
                         timestamp=timestamp,
                         session_id=session_id,
                         samples=samples,
+                        packet_sequence=data.get("packet_sequence", 0),
+                        capture_timestamp=data.get("capture_timestamp", timestamp),
                     )
                     await stream_producer.push_to_stream(payload.dict())
 

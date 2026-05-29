@@ -261,14 +261,15 @@ class MetricsEngine:
 
         self.sample_buffer.extend(samples)
 
+        # Compute FFT once per packet (previously done twice)
+        freqs, mags = self._fft_magnitude(1024)
+
         peak = self.calculate_peak(normalized)
-        frequency = self.estimate_frequency(normalized)
+        frequency = self.compute_peak_frequency(freqs, mags)
         zcr = self.calculate_zcr(normalized)
 
         self.update_energy_envelope(normalized)
         bpm = self.autocorrelation_bpm()
-
-        freqs, mags = self._fft_magnitude(1024)
 
         peak_frequency = self.compute_peak_frequency(freqs, mags)
         spectral_centroid = self.compute_spectral_centroid(freqs, mags)

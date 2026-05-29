@@ -27,6 +27,8 @@ class StreamProducer:
             "device_id": str(payload.get("device_id")),
             "timestamp": str(payload.get("timestamp")),
             "session_id": session_id,
+            "packet_sequence": str(payload.get("packet_sequence", 0)),
+            "capture_timestamp": str(payload.get("capture_timestamp", payload.get("timestamp"))),
             "samples": json.dumps(payload.get("samples", []))
         }
 
