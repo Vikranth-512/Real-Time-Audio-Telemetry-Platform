@@ -52,7 +52,45 @@ graph TD
 - **Live Visualizations**: Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
 - **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
 
-### Session Intelligence Engine
+<img width="1878" height="906" alt="Screenshot (443)" src="https://github.com/user-attachments/assets/c01a97de-e792-42a0-a538-c1281f34453b" />
+<img width="1840" height="843" alt="Screenshot (197)" src="https://github.com/user-attachments/assets/d9b7df80-1012-4748-a773-847a485cf33c" />
+<img width="1852" height="686" alt="Screenshot (437)" src="https://github.com/user-attachments/assets/c2bf1e80-b4c7-49ae-ab6e-c00975e8d76a" />
+
+## Performance Optimizations
+
+This architecture has been heavily optimized for low-latency, real-time audio telemetry, ensuring a buttery-smooth visual experience without compromising backend scalability.
+
+### Real-Time Performance
+
+| Metric | Value | Details |
+| :--- | :---: | :--- |
+| **Render Frame Rate** | `60 / 120 FPS` | Vsync-locked via `requestAnimationFrame` — no manual throttle |
+| **Render Backend** | `WebGL` | Hardware-accelerated `LINE_STRIP` draw, zero Canvas2D fallback |
+| **Heap Allocations per Frame** | `0` | Pre-allocated `Float32Array(12,000)` vertex buffer, reused every frame |
+| **Capture → Send Latency** | `< 1 ms` | Event-driven dispatch (`asyncio.Event`), zero polling delay |
+| **Audio Capture Rate** | `48,000 Hz` | 1024-sample packets → ~47 packets/sec |
+| **Ring Buffer Depth** | `48,000 samples` | 1 full second of audio history in memory |
+| **Display Window** | `6,000 samples` | ~125 ms of waveform visible at any time |
+| **Visual Smoothing** | `Spring Physics` | Lerp factor `0.08` decouples 47 FPS data from 60 FPS render |
+| **Stale Packet Rejection** | `< 500 ms` | Packets exceeding 500 ms end-to-end latency are silently dropped |
+| **Sequence Guard** | `Monotonic` | Out-of-order and replayed packets rejected via `packet_sequence` counter |
+| **React Re-render Throttle** | `100 ms` | Metric state updates batched — only 10 React re-renders/sec max |
+| **Backend JSON Overhead** | `Zero-copy` | Sample arrays pass through Redis as raw strings, never re-serialized |
+| **FFT Compute** | `1× per packet` | Single 1024-point FFT shared across all spectral metric calculations |
+| **WebSocket Heartbeat** | `30 s` | Application-level ping keeps connection alive through reverse proxies |
+| **Redis Stream Depth** | `50 msgs` | Bounded `MAXLEN` per session prevents unbounded memory growth |
+
+
+* **True Zero-Wait Capture:** Replaced traditional busy-polling with thread-safe asynchronous event signaling (`asyncio.Event`), ensuring network dispatch triggers the exact microsecond a hardware audio frame is captured.
+
+* **Zero-Copy JSON Pipeline:** Completely eradicated array serialization bottlenecks on the backend. High-density float arrays (48kHz samples) bypass FastAPI's main event loop using raw string pass-throughs and f-string assembly, drastically reducing CPU load and Garbage Collection pauses.
+* **Optimized DSP Overhead:** Mathematical pipelines were refactored to eliminate redundant operations. Complex transforms (like 1024-point FFTs) are computed exactly once per packet and shared across all spectral and frequency metric engines.
+
+* **Vsync-Locked WebGL Rendering:** The dashboard achieves a locked 60/120 FPS by decoupling the visual render loop from the network packet rate. Using pre-allocated GPU vertex buffers and spring-physics interpolation, the waveform remains perfectly smooth regardless of network flutter.
+
+* **Temporal Network Resilience:** End-to-end packet sequence tracking ensures that stale, replayed, or out-of-order packets are instantly dropped by the UI, guaranteeing a mathematically accurate and jitter-free waveform display.
+
+## Session Intelligence Engine
 
 The Session Intelligence Engine is a high-level acoustic analytics layer built on top of the real-time audio processing pipeline.
 
