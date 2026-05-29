@@ -53,7 +53,6 @@ graph TD
 - **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
 
 <img width="1878" height="906" alt="Screenshot (443)" src="https://github.com/user-attachments/assets/c01a97de-e792-42a0-a538-c1281f34453b" />
-<img width="1840" height="843" alt="Screenshot (197)" src="https://github.com/user-attachments/assets/d9b7df80-1012-4748-a773-847a485cf33c" />
 <img width="1852" height="686" alt="Screenshot (437)" src="https://github.com/user-attachments/assets/c2bf1e80-b4c7-49ae-ab6e-c00975e8d76a" />
 
 ## Performance Optimizations
