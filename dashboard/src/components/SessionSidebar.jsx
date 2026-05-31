@@ -132,7 +132,9 @@ const SessionSidebar = ({ isOpen, onClose, onSelectSession, showFFT, onToggleFFT
                     className="session-sidebar__item"
                     onClick={() => handleSelect(s.session_id)}
                   >
-                    <span className="session-sidebar__item-id">{s.session_id}</span>
+                    <span className="session-sidebar__item-id" title={s.session_id}>
+                      {s.session_id.length > 8 ? `${s.session_id.substring(0, 8)}...` : s.session_id}
+                    </span>
                     <span className="session-sidebar__item-ts">
                       {formatTimestamp(s.timestamp)}
                     </span>

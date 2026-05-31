@@ -70,7 +70,7 @@ class SessionManager:
     def create_session(self) -> str:
         """Create a new active session"""
         import uuid
-        session_id = str(uuid.uuid4())[:8]
+        session_id = str(uuid.uuid4())
         
         self.active_sessions[session_id] = {
             'start_time': time.time(),

@@ -177,6 +177,8 @@ const WaveformVisualization = ({ bufferInfo, isConnected, isActiveSession, showF
         if (!canvasRef.current) return
 
         const canvas = fftCanvasRef.current
+        if (!canvas) return
+        
         const ctx = canvas.getContext('2d')
 
         if (!ctx) return
@@ -394,6 +396,7 @@ void main(){
         }
 
         const canvas = canvasRef.current
+        if (!canvas) return
 
         const dpr = window.devicePixelRatio || 1
 

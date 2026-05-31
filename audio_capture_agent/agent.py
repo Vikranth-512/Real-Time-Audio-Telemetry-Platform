@@ -347,7 +347,7 @@ def capture_loop(runtime: StreamRuntime, device_index: int):
 
             capture_timestamp = time.time()
             raw = np.frombuffer(raw_bytes, dtype=np.int16)
-            raw = raw.reshape(-1, CHANNELS).mean(axis=1)
+            raw = raw.reshape(-1, getattr(runtime, "channels", CHANNELS)).mean(axis=1)
 
             if len(raw) != PACKET_SIZE:
                 continue
@@ -491,10 +491,19 @@ async def start_stream():
         device_index = find_loopback_device(runtime.audio_interface)
         
         try:
+            device_info = runtime.audio_interface.get_device_info_by_index(device_index)
+            native_rate = int(device_info.get("defaultSampleRate", SAMPLE_RATE))
+            native_channels = int(device_info.get("maxInputChannels", CHANNELS))
+            if native_channels < 1:
+                native_channels = CHANNELS
+                
+            # Store for capture_loop to use when reshaping
+            runtime.channels = native_channels
+
             runtime.audio_stream = runtime.audio_interface.open(
                 format=pyaudio.paInt16,
-                channels=CHANNELS,
-                rate=SAMPLE_RATE,
+                channels=native_channels,
+                rate=native_rate,
                 input=True,
                 input_device_index=device_index,
                 frames_per_buffer=PACKET_SIZE,

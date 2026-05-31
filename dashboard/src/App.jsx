@@ -87,7 +87,9 @@ function SessionListPanel({ sessions, selectedId, onSelect }) {
                     >
                         <div className="session-list-item__row">
                             <span className={`session-list-item__dot ${isLive ? 'session-list-item__dot--live' : 'session-list-item__dot--ended'}`} />
-                            <span className="session-list-item__id">{s.sessionId}</span>
+                            <span className="session-list-item__id" title={s.sessionId}>
+                                {s.sessionId.length > 8 ? `${s.sessionId.substring(0, 8)}...` : s.sessionId}
+                            </span>
                         </div>
                         <div className="session-list-item__meta">
                             <span>{s.deviceId || 'device'}</span>
@@ -484,7 +486,17 @@ function App() {
         const mode = showFFT ? 'fft' : 'wave'
         fetch(`/api/session/${id}/averages?mode=${mode}`)
             .then(r => r.json())
-            .then(data => { setAverages(data); setCurrentSessionId(data.session_id || id) })
+            .then(data => {
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = `averages_${id}.json`
+                document.body.appendChild(a)
+                a.click()
+                a.remove()
+                URL.revokeObjectURL(url)
+            })
             .catch(err => console.error('Export averages failed', err))
     }, [archivedSessionId, currentSessionId, selectedSessionId, showFFT])
 

@@ -1,4 +1,4 @@
-{$PUBLIC_DOMAIN:localhost} {
+http://{$PUBLIC_DOMAIN:localhost}, https://{$PUBLIC_DOMAIN:localhost} {
     encode gzip
 
     # WebSocket routes → backend

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # Debug flag for verbose logging (set via environment variable)
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
-POSTGRES_URL = os.getenv("POSTGRES_URL", "postgresql+asyncpg://user:password@localhost:5432/audio_db")
+POSTGRES_URL = os.getenv("POSTGRES_URL")
 
 engine = create_async_engine(
     POSTGRES_URL, 

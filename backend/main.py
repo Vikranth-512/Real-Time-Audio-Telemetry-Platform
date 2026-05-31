@@ -30,15 +30,54 @@ logging.basicConfig(level=getattr(logging, LOG_LEVEL))
 logger     = logging.getLogger(__name__)
 DEBUG_MODE = os.getenv("DEBUG_MODE", "false").lower() == "true"
 
-REDIS_URL  = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL  = os.getenv("REDIS_URL")
 SESSION_TTL = 86_400  # 24 h
+
+
+# ─── CORS origin parsing ─────────────────────────────────────────────────────
+def _parse_cors_origins() -> list[str]:
+    """
+    Read allowed origins from CORS_ORIGINS (comma-separated).
+    Normalises trailing slashes, rejects wildcards, and validates
+    that every entry starts with http:// or https://.
+    Returns an empty list if nothing is configured (caller decides
+    whether to fail).
+    """
+    raw = os.getenv("CORS_ORIGINS", "").strip()
+    if not raw:
+        return []
+
+    origins: list[str] = []
+    for entry in raw.split(","):
+        origin = entry.strip().rstrip("/")
+        if not origin or origin == "*":
+            continue
+        if not origin.startswith(("http://", "https://")):
+            raise RuntimeError(
+                f"Invalid CORS origin '{origin}': must start with "
+                f"http:// or https://"
+            )
+        origins.append(origin)
+
+    # Deduplicate, preserve order
+    seen: set[str] = set()
+    unique: list[str] = []
+    for o in origins:
+        if o not in seen:
+            seen.add(o)
+            unique.append(o)
+    return unique
+
+
+ALLOWED_ORIGINS = _parse_cors_origins()
+
 
 # ─── App ─────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Audio Waveform Analyzer API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS else ["http://invalid.local"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -210,6 +249,14 @@ async def cleanup_task():
 # ─── Startup / shutdown ───────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup_event():
+    if not ALLOWED_ORIGINS:
+        raise RuntimeError(
+            "CORS_ORIGINS must be set to at least one explicit origin "
+            "(e.g. CORS_ORIGINS=https://example.com). "
+            "Wildcard '*' is not accepted."
+        )
+    logger.info(f"CORS allowed origins: {ALLOWED_ORIGINS}")
+
     await init_db()
     asyncio.create_task(broadcast_metrics_task())
     asyncio.create_task(cleanup_task())
@@ -240,7 +287,7 @@ async def ingest_audio(payload: AudioPayload):
     return {"status": "ok"}
 
 
-ALLOWED_WS_ORIGINS = {os.getenv("CORS_ORIGIN", "http://localhost")}
+ALLOWED_WS_ORIGINS: set[str] = set()  # populated at startup from ALLOWED_ORIGINS
 
 # ─── Device WebSocket (publisher) ────────────────────────────────────────────
 @app.websocket("/ws/stream")
@@ -251,13 +298,13 @@ async def websocket_ingest(websocket: WebSocket):
     Token is returned to the device; dashboards do NOT need a token (public watch).
     """
     origin = websocket.headers.get("origin")
-    if origin and origin not in ALLOWED_WS_ORIGINS:
+    if origin and origin.rstrip("/") not in ALLOWED_ORIGINS:
         await websocket.close(code=1008)
         return
 
     await websocket.accept()
 
-    session_id    = str(uuid.uuid4())[:8]
+    session_id    = str(uuid.uuid4())
     owner_token   = secrets.token_hex(16)
     device_id     = "ws-device"
 
@@ -455,6 +502,14 @@ async def websocket_dashboard(websocket: WebSocket):
 
 # ─── REST APIs ────────────────────────────────────────────────────────────────
 
+def _validate_session_id(session_id: str) -> str:
+    """Validate that a session_id is a well-formed UUID. Raises 400 if not."""
+    try:
+        uuid.UUID(session_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid session ID: {session_id}")
+    return session_id
+
 def _compute_averages_from_rows(rows):
     if not rows:
         return {"avg_rms": 0.0, "avg_peak": 0.0, "avg_frequency": 0.0, "avg_bpm": 0.0}
@@ -510,6 +565,7 @@ async def list_sessions():
 
 @app.get("/api/session/{session_id}")
 async def get_session(session_id: str):
+    _validate_session_id(session_id)
     async with async_session() as session:
         stmt   = select(AudioMetric).where(AudioMetric.session_id == session_id).order_by(AudioMetric.timestamp)
         result = await session.execute(stmt)
@@ -525,6 +581,7 @@ async def get_session(session_id: str):
 
 @app.get("/api/session/{session_id}/averages")
 async def get_session_averages(session_id: str, mode: str = Query(default="wave", pattern="^(wave|fft)$")):
+    _validate_session_id(session_id)
     async with async_session() as session:
         stmt   = select(AudioMetric).where(AudioMetric.session_id == session_id)
         result = await session.execute(stmt)
@@ -538,6 +595,7 @@ async def get_session_averages(session_id: str, mode: str = Query(default="wave"
 @app.get("/api/sessions/{session_id}/export")
 @app.get("/api/session/{session_id}/metrics")
 async def export_session_metrics(session_id: str, mode: str = Query(default="wave", pattern="^(wave|fft)$")):
+    _validate_session_id(session_id)
     async with async_session() as session:
         stmt   = select(AudioMetric).where(AudioMetric.session_id == session_id).order_by(AudioMetric.timestamp)
         result = await session.execute(stmt)
@@ -563,6 +621,7 @@ async def get_current_metrics():
 
 @app.post("/api/sessions/{session_id}/stop")
 async def stop_session(session_id: str):
+    _validate_session_id(session_id)
     await redis_client.sadd("stopped_sessions", session_id)
     await redis_client.srem(ACTIVE_SESSIONS_KEY, session_id)
     await manager.broadcast_global(json.dumps({
