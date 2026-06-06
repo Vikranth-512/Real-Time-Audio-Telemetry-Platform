@@ -1,4 +1,4 @@
-# Audio Waveform FFT Analyzer Dashboard
+# Real-Time Audio Telemetry Platform
 
 A comprehensive full-stack embedded and web system designed to capture analog audio, process the signal for real-time time-domain and frequency-domain analytics
 
