@@ -6,6 +6,7 @@ import AverageMetricsPanel from './components/AverageMetricsPanel'
 import SessionSidebar, { HistoryIcon } from './components/SessionSidebar'
 import LiveAcousticPanel from './components/LiveAcousticPanel'
 import InferenceAnalyticsPanel from './components/InferenceAnalyticsPanel'
+import TimelinePanel from './components/TimelinePanel'
 import './styles.css'
 import { useWebSocket } from './hooks/useWebSocket'
 
@@ -131,6 +132,7 @@ function App() {
     const sessionActiveRef = useRef(false)
     const [sessionStopped, setSessionStopped] = useState(false)
     const [averages, setAverages] = useState(null)
+    const [timeline, setTimeline] = useState(null)
     const [currentSessionId, setCurrentSessionId] = useState(null)
     const [archivedSessionId, setArchivedSessionId] = useState(null)
 
@@ -244,6 +246,7 @@ function App() {
             setSessionStopped(false)
             setArchivedSessionId(null)
             setAverages(null)
+            setTimeline(null)
         }
     }, [sessions, selectedSessionId])
 
@@ -281,6 +284,10 @@ function App() {
                 rms: metrics.rms || 0,
                 peak: metrics.peak || 0,
                 frequency: metrics.frequency || 0,
+                peak_frequency: metrics.peak_frequency || 0,
+                spectral_centroid: metrics.spectral_centroid || 0,
+                spectral_rolloff: metrics.spectral_rolloff || 0,
+                spectral_flatness: metrics.spectral_flatness || 0,
             }
             if (!metricsFlushTimerRef.current) {
                 metricsFlushTimerRef.current = setTimeout(() => {
@@ -381,6 +388,7 @@ function App() {
                     .then(r => r.json())
                     .then(data => {
                         setAverages(data.averages || {})
+                        setTimeline(data.timeline || null)
                         setCurrentSessionId(data.session_id)
                     })
                     .catch(err => console.error('Averages fetch failed', err))
@@ -449,6 +457,7 @@ function App() {
         lastPacketSequenceRef.current = -1
         setLiveLatency(null)
         setAverages(null)
+        setTimeline(null)
         setCurrentSessionId(sid)
         setWaveformResetKey(prev => prev + 1)
     }, [selectedSessionId, sessions])
@@ -460,6 +469,7 @@ function App() {
         setArchivedSessionId(null)
         setCurrentSessionId(null)
         setAverages(null)
+        setTimeline(null)
         waveformBufferRef.current.fill(0)
         waveformIndexRef.current = 0
         lastPacketSequenceRef.current = -1
@@ -478,7 +488,16 @@ function App() {
         setSessionStopped(true)
         setSessionActive(false)
         setSidebarOpen(false)
-    }, [])
+
+        const mode = showFFT ? 'fft' : 'wave'
+        fetch(`/api/session/${sessionId}/metrics?mode=${mode}`)
+            .then(r => r.json())
+            .then(data => {
+                setAverages(data.averages || {})
+                setTimeline(data.timeline || null)
+            })
+            .catch(err => console.error('Metrics fetch failed', err))
+    }, [showFFT])
 
     const handleExportAverages = useCallback(() => {
         const id = archivedSessionId || currentSessionId || selectedSessionId
@@ -588,8 +607,6 @@ function App() {
                     isOpen={sidebarOpen}
                     onClose={() => setSidebarOpen(false)}
                     onSelectSession={handleLoadSession}
-                    showFFT={showFFT}
-                    onToggleFFT={() => setShowFFT(v => !v)}
                 />
             </header>
 
@@ -640,6 +657,10 @@ function App() {
                     />
                 )}
 
+                {timeline && (
+                    <TimelinePanel timeline={timeline} />
+                )}
+
                 {showInference && inferenceId && (
                     <InferenceAnalyticsPanel sessionId={inferenceId} />
                 )}
@@ -648,6 +669,14 @@ function App() {
 
             <div className="controls-row" style={{ justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', gap: '12px' }}>
+                    <select
+                        className="view-select"
+                        value={showFFT ? "fft" : "wave"}
+                        onChange={(e) => setShowFFT(e.target.value === "fft")}
+                    >
+                        <option value="wave">Waveform View</option>
+                        <option value="fft">FFT Spectrum View</option>
+                    </select>
                     <button className="btn" onClick={handleRefreshWaveform}>Refresh Waveform</button>
                     <button className="btn btn-start" onClick={handleStartNewSession}>Start New Session</button>
                     <button

@@ -15,6 +15,10 @@ class AudioMetric(Base):
     rms_energy = Column(Float)
     zcr = Column(Float)
     frequency = Column(Float)
+    peak_frequency = Column(Float)
+    spectral_centroid = Column(Float)
+    spectral_rolloff = Column(Float)
+    spectral_flatness = Column(Float)
 
     __table_args__ = (
         UniqueConstraint('device_id', 'timestamp', 'session_id', name='uq_device_time_session'),

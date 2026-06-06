@@ -366,7 +366,7 @@ void main(){
 
         if (showFFT) {
 
-            if (analyserRef.current && data.length >= FFT_SIZE) {
+            if (analyserRef.current && buffer.length >= FFT_SIZE) {
 
                 const audioCtx = audioCtxRef.current
                 const analyser = analyserRef.current

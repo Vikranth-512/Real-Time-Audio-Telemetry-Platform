@@ -1,0 +1,134 @@
+[
+  {
+    "name": "TEST 1 \u2014 Perfect Stable Sine Wave",
+    "desc": "Baseline tracking without noise.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 2 \u2014 Tiny Numerical Noise",
+    "desc": "Robustness against floating-point noise.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 3 \u2014 Realistic Sensor Jitter",
+    "desc": "Tolerate 3% jitter.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 4 \u2014 Single Impulse Spike",
+    "desc": "Isolated events do not become sustained.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 5 \u2014 5 Second Burst",
+    "desc": "Proper burst state hysteresis.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 6 \u2014 Long Active Region",
+    "desc": "Active/burst separation.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 7 \u2014 Environment Change",
+    "desc": "CUSUM shift detection.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 8 \u2014 Slow Drift",
+    "desc": "Trend without CUSUM trigger.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 9 \u2014 Oscillating Activity",
+    "desc": "Segment merging structure.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 10 \u2014 Quiet Session",
+    "desc": "Low-amplitude classification.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 11 \u2014 Missing Samples",
+    "desc": "Robustness to timestamp gaps.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 12 \u2014 Invalid Sample Blocks",
+    "desc": "Propagation of UNKNOWN state.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 13 \u2014 Short Session",
+    "desc": "Duration scaling bounds.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 14 \u2014 Long Session",
+    "desc": "Memory & numerical accumulation.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 15 \u2014 Burst Flood Stress Test",
+    "desc": "Clustering limit check.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 16 \u2014 ZCR-Only Disturbance",
+    "desc": "Feature decoupling.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 17 \u2014 Peak-Only Disturbance",
+    "desc": "Euclidean distance robustness.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 26 \u2014 Long Continuous Speech",
+    "desc": "Preserve ACTIVE against slow baseline.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 27 \u2014 Factory Oscillation",
+    "desc": "Suppress CUSUM on heavy transition density.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 28 \u2014 Speech + Packet Loss",
+    "desc": "Confidence reflects duration/sample coverage.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 29 \u2014 Env Shift + Speech",
+    "desc": "Separate environment shift from active deviations.",
+    "passed": true,
+    "reason": "Passed"
+  },
+  {
+    "name": "TEST 30 \u2014 Burst Inside Active",
+    "desc": "Detect transient gradient burst within elevated slow baseline.",
+    "passed": true,
+    "reason": "Passed"
+  }
+]

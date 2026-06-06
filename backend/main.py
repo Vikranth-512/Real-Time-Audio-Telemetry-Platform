@@ -18,6 +18,7 @@ from sqlalchemy import select, desc, func
 from ingestion.schemas import AudioPayload
 from ingestion.stream_producer import StreamProducer, ACTIVE_SESSIONS_KEY
 from storage.db import async_session, AudioMetric, init_db
+from processing.timeline_analyzer import generate_timeline
 import redis.asyncio as aioredis
 
 # ─── Global Agent Tracking ────────────────────────────────────────────────────
@@ -514,18 +515,31 @@ def _compute_averages_from_rows(rows):
     if not rows:
         return {"avg_rms": 0.0, "avg_peak": 0.0, "avg_frequency": 0.0, "avg_bpm": 0.0}
     rms_sum = amp_sum = bpm_sum = 0
+    freq_sum = centroid_sum = rolloff_sum = flat_sum = 0
     count   = len(rows)
     for r in rows:
         rms_sum += (r.rms_energy    or 0.0)
         amp_sum += (r.avg_amplitude or 0.0)
         bpm_sum += (r.bpm           or 0.0)
+        freq_sum += (r.peak_frequency or 0.0)
+        centroid_sum += (r.spectral_centroid or 0.0)
+        rolloff_sum += (r.spectral_rolloff or 0.0)
+        flat_sum += (r.spectral_flatness or 0.0)
     avg_rms = round(rms_sum / count, 4)
     avg_amp = round(amp_sum / count, 4)
     avg_bpm = round(bpm_sum / count, 4)
+    avg_peak_freq = round(freq_sum / count, 2)
+    avg_centroid = round(centroid_sum / count, 2)
+    avg_rolloff = round(rolloff_sum / count, 2)
+    avg_flatness = round(flat_sum / count, 4)
     return {
         "avg_rms": avg_rms, "avg_peak": avg_amp,
         "avg_frequency": 0.0, "avg_bpm": avg_bpm,
         "rms": avg_rms, "peak": avg_amp, "bpm": avg_bpm, "frequency": 0.0,
+        "avg_peak_frequency": avg_peak_freq, "avg_spectral_centroid": avg_centroid,
+        "avg_spectral_rolloff": avg_rolloff, "avg_spectral_flatness": avg_flatness,
+        "peak_frequency": avg_peak_freq, "spectral_centroid": avg_centroid,
+        "spectral_rolloff": avg_rolloff, "spectral_flatness": avg_flatness,
     }
 
 
@@ -575,6 +589,8 @@ async def get_session(session_id: str):
         metrics = [{"timestamp": r.timestamp, "metrics": {
             "bpm": r.bpm, "rms": r.rms_energy, "peak": r.avg_amplitude,
             "frequency": r.frequency, "zcr": r.zcr,
+            "peak_frequency": r.peak_frequency, "spectral_centroid": r.spectral_centroid,
+            "spectral_rolloff": r.spectral_rolloff, "spectral_flatness": r.spectral_flatness,
         }} for r in rows]
         return {"session_id": session_id, "averages": _compute_averages_from_rows(rows), "metrics": metrics}
 
@@ -591,6 +607,8 @@ async def get_session_averages(session_id: str, mode: str = Query(default="wave"
         return {"session_id": session_id, **_compute_averages_from_rows(rows)}
 
 
+
+
 @app.get("/api/session/{session_id}/export")
 @app.get("/api/sessions/{session_id}/export")
 @app.get("/api/session/{session_id}/metrics")
@@ -605,11 +623,17 @@ async def export_session_metrics(session_id: str, mode: str = Query(default="wav
         metrics = [{"timestamp": r.timestamp, "metrics": {
             "bpm": r.bpm, "rms": r.rms_energy, "peak": r.avg_amplitude,
             "frequency": r.frequency, "zcr": r.zcr,
+            "peak_frequency": r.peak_frequency, "spectral_centroid": r.spectral_centroid,
+            "spectral_rolloff": r.spectral_rolloff, "spectral_flatness": r.spectral_flatness,
         }} for r in rows]
+        # Run CPU-bound timeline analysis off the event loop
+        loop = asyncio.get_running_loop()
+        timeline = await loop.run_in_executor(None, generate_timeline, metrics)
         return {
             "session_id":  session_id,
             "averages":    _compute_averages_from_rows(rows),
             "full_metrics": metrics,
+            "timeline": timeline
         }
 
 

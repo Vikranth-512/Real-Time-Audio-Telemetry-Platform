@@ -91,6 +91,10 @@ class SessionConsumer:
                     "rms_energy":    float(metrics.get("rms",       0.0)),
                     "zcr":           float(metrics.get("zcr",       0.0)),
                     "frequency":     float(metrics.get("frequency", 0.0)),
+                    "peak_frequency":    float(metrics.get("peak_frequency", 0.0)),
+                    "spectral_centroid": float(metrics.get("spectral_centroid", 0.0)),
+                    "spectral_rolloff":  float(metrics.get("spectral_rolloff", 0.0)),
+                    "spectral_flatness": float(metrics.get("spectral_flatness", 0.0)),
                 }
                 metrics_batch.append(db_metric)
 

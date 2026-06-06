@@ -30,7 +30,7 @@ const HistoryIcon = ({ onClick, isOpen }) => (
  * Sidebar drawer: session history with search.
  * Search by session_id via GET /api/sessions/search?q=
  */
-const SessionSidebar = ({ isOpen, onClose, onSelectSession, showFFT, onToggleFFT }) => {
+const SessionSidebar = ({ isOpen, onClose, onSelectSession }) => {
   const [search, setSearch] = useState('');
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -88,15 +88,6 @@ const SessionSidebar = ({ isOpen, onClose, onSelectSession, showFFT, onToggleFFT
         className={`session-sidebar ${isOpen ? 'session-sidebar--open' : ''}`}
         aria-label="Session history"
       >
-        <div className="session-sidebar__top-controls">
-          <button
-            type="button"
-            className="session-sidebar__toggle"
-            onClick={onToggleFFT}
-          >
-            {showFFT ? 'Waveform View' : 'FFT Spectrum View'}
-          </button>
-        </div>
         <div className="session-sidebar__header">
           <h2 className="session-sidebar__title">History</h2>
           <button
