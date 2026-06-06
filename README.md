@@ -49,7 +49,7 @@ graph TD
 
 ###  Professional Analytic/intelligence Metrics from Raw Audio Samples
 - **React + Vite Frontend**: High-performance, responsive UI crafted with a dark navy aesthetic.
-- **Live Visualizations**: Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
+- **Live Visualizations**: multiple live audio analylitic views including Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
 - **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
 
 <img width="1878" height="906" alt="Screenshot (443)" src="https://github.com/user-attachments/assets/c01a97de-e792-42a0-a538-c1281f34453b" />
@@ -271,50 +271,302 @@ Each observation is assigned a confidence score derived from:
 
 ---
 
-### Distribution Analysis
+## Timeline Analysis Engine
 
-Histogram-based distribution analytics are generated for:
+The Timeline Analysis Engine transforms raw acoustic metrics into a structured, observability-grade interpretation of session behavior. Rather than simply plotting RMS values over time, the engine performs multi-stage signal analysis to identify activity patterns, environmental shifts, anomalies, behavioral phases, and long-term trends.
+<img width="1852" height="835" alt="image" src="https://github.com/user-attachments/assets/ea75c5af-1cc2-467c-8c93-2e75bccd3b32" />
+<img width="1816" height="674" alt="Screenshot (470)" src="https://github.com/user-attachments/assets/8a93d68e-e5da-4288-b8bc-6c4b7862ed87" />
 
-- RMS energy
-- Amplitude
+---
+
+### Multi-Timescale Baseline Modeling
+
+The analyzer maintains independent baseline models to separate short-term activity from long-term environmental conditions.
+
+#### Fast Baseline
+- Detects local activity changes
+- Powers Active/Burst classification
+- Preserves responsiveness to transient events
+
+#### Slow Baseline
+- Models the underlying acoustic environment
+- Used for environmental shift detection
+- Prevents sustained activity from being absorbed into the baseline
+
+This dual-timescale architecture allows the system to distinguish between different acoustic behaviors:
+
+| Scenario | Classification |
+|-----------|---------------|
+| Short loud spike | Burst |
+| Sustained conversation | Active |
+| Permanent environmental change | Environment Shift |
+| Stable ambient sound | Steady |
+
+---
+
+### Robust State Machine Classification
+
+Each sample is classified into one of four acoustic states:
+
+| State | Description |
+|---------|-------------|
+| Quiet | Below expected baseline activity |
+| Steady | Normal operating conditions |
+| Active | Sustained elevated activity |
+| Burst | Rapid transient acoustic events |
+
+Classification uses:
+
+- Robust MAD-normalized deviation scoring
+- Hysteresis thresholds
+- Persistence validation
+- Gradient-aware burst detection
+
+This prevents:
+
+- Flickering state transitions
+- Noise-driven burst hallucinations
+- Single-sample spikes becoming false events
+
+---
+
+### Environment Shift Detection
+
+The engine continuously monitors long-term baseline behavior using a validated CUSUM-based change detector.
+
+#### Features
+
+- Long-term drift tracking
+- Permanent environment change detection
+- Oscillation suppression
+- Post-shift stability validation
+
+### Multivariate Anomaly Detection
+
+Anomalies are detected using a weighted Euclidean distance across multiple acoustic dimensions.
+
+#### Analyzed Features
+
+- RMS Energy
+- Peak Amplitude
 - Zero Crossing Rate (ZCR)
 
-These distributions help identify:
+#### Capabilities
 
-- Energy concentration patterns
-- Dynamic range spread
-- Noise dominance
-- Silence occupancy
-- Signal consistency
+- Single-event anomaly detection
+- Clustered incident generation
+- Severity scoring
+- False-positive suppression
 
----
+#### Severity Levels
 
-### Signal Overview Visualization
-
-The intelligence dashboard visualizes synchronized acoustic features over time.
-
-### Visualized Metrics
-
-- RMS energy trace
-- Amplitude envelope
-- ZCR evolution
-- Spike markers
-- Silence gaps
-- Spectral transitions
+- Minor
+- Major
+- Critical
 
 ---
 
-### Enables Rapid Identification Of
+### Structural Phase Segmentation
 
-- Acoustic instability
-- Sudden transient events
-- Environmental noise shifts
-- Silence-to-activity transitions
-- Sustained harmonic regions
+The analyzer converts low-level state transitions into human-readable behavioral phases.
+
+Example phase sequence:
+
+```text
+Steady State
+    ↓
+Sustained Activity
+    ↓
+Burst Cluster
+    ↓
+Steady State
+```
+
+Each phase contains:
+
+- Start time
+- End time
+- Duration
+- Confidence score
 
 ---
 
-### Technical Characteristics
+### Confidence-Aware Timeline Construction
+
+Timeline confidence is calculated from multiple observability signals:
+
+- Sample coverage
+- Timestamp regularity
+- Data validity ratio
+- Baseline stability
+
+This provides an estimate of timeline reliability under conditions such as:
+
+- Packet loss
+- Missing samples
+- Sensor interruptions
+- Irregular ingestion rates
+
+---
+
+### Trend Analysis
+
+Long-term acoustic trends are extracted using robust statistical estimation techniques.
+
+#### Output States
+
+- Increasing
+- Decreasing
+- Stable
+
+The implementation is designed to be resistant to:
+
+- Outliers
+- Burst spikes
+- Temporary disturbances
+- Short-lived anomalies
+
+---
+
+### Session Fingerprinting
+
+The engine generates high-level behavioral summaries describing overall session dynamics.
+
+#### Example Fingerprints
+
+```text
+Stable Ambient
+Moderately Dynamic
+Active Events Detected
+Shifting Environments
+Highly Dynamic
+```
+
+#### Additional Metrics
+
+- Activity Intensity Index
+- Baseline Drift Percentage
+- Longest Stable Period
+- Activity Volatility
+- Transition Density
+- Anomaly Density
+
+---
+
+### Event Extraction
+
+The analyzer automatically extracts meaningful acoustic events.
+
+#### Supported Event Types
+
+- Sustained Activity
+- Burst Events
+- Environment Changes
+- Structural Anomalies
+
+Example event object:
+
+```json
+{
+  "type": "environment_change",
+  "timestamp": 123.4,
+  "duration": 0.0,
+  "description": "Environment Shift"
+}
+```
+
+---
+
+### Fact-Based Narrative Generation
+
+Each session receives an automatically generated narrative summary derived directly from measured observations.
+
+#### Example
+
+> The session remained within its baseline range for 92% of its duration. A sustained activity period occurred at 3m 14s and lasted 47s. One structural anomaly was detected. No significant environmental shifts were observed.
+
+The narrative is generated from detected facts rather than static templates, ensuring consistency with the underlying analysis.
+
+---
+
+## Validation & Reliability
+
+Validation focuses on:
+
+- False-positive suppression
+- False-negative reduction
+- Baseline stability
+- Event accuracy
+- Environment shift reliability
+- Timeline confidence correctness
+
+---
+
+## Output Schema
+
+The analyzer produces a structured session interpretation:
+
+```json
+{
+  "baseline": {},
+  "distribution": {},
+  "segments": [],
+  "events": [],
+  "anomalies": [],
+  "phases": [],
+  "insights": {},
+  "summary": ""
+}
+```
+
+### Output Components
+
+| Component | Description |
+|------------|------------|
+| baseline | Session-wide acoustic baseline metrics |
+| distribution | Percentage distribution of activity states |
+| segments | Classified timeline segments |
+| events | Extracted acoustic events |
+| anomalies | Clustered anomaly detections |
+| phases | Human-readable behavioral phases |
+| insights | Derived observability metrics |
+| summary | Fact-based narrative description |
+
+---
+
+## Design Goals
+
+The Timeline Analysis Engine is designed around the following principles:
+
+- Deterministic results
+- Explainable classifications
+- Low false-positive rates
+- Robust handling of missing data
+- Real-time compatibility
+- Observability-grade interpretability
+- Frontend-stable API contract
+- Human-readable outputs
+- Statistically robust analysis
+
+---
+
+## Role in the Platform
+
+The Timeline Analysis Engine serves as the intelligence layer that converts raw acoustic measurements into meaningful operational insights.
+
+It enables users to understand not only **what happened**, but also:
+
+- How the acoustic environment evolved
+- When meaningful events occurred
+- Whether environmental conditions changed
+- How stable or dynamic a session was
+- Which anomalies were structurally significant
+
+By combining signal processing, statistical modeling, anomaly detection, and semantic interpretation, the engine transforms raw audio metrics into actionable observability insights.
+
+---
+
+## Technical Characteristics
 
 | Capability | Description |
 |---|---|
