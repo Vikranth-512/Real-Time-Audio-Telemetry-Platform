@@ -274,6 +274,7 @@ Each observation is assigned a confidence score derived from:
 ## Timeline Analysis Engine
 
 The Timeline Analysis Engine transforms raw acoustic metrics into a structured, observability-grade interpretation of session behavior. Rather than simply plotting RMS values over time, the engine performs multi-stage signal analysis to identify activity patterns, environmental shifts, anomalies, behavioral phases, and long-term trends.
+
 <img width="1852" height="835" alt="image" src="https://github.com/user-attachments/assets/ea75c5af-1cc2-467c-8c93-2e75bccd3b32" />
 <img width="1816" height="674" alt="Screenshot (470)" src="https://github.com/user-attachments/assets/8a93d68e-e5da-4288-b8bc-6c4b7862ed87" />
 
