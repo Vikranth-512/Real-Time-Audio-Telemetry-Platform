@@ -148,18 +148,6 @@ flowchart LR
     class G output;
 ```
 
-
-### Derived Drift Metrics
-
-| Metric | Description |
-|---|---|
-| **Slope (Hz/sample)** | Long-term directional frequency movement |
-| **Burst Density** | Frequency instability occurrence rate |
-| **Variance Spread** | Frequency dispersion across the session |
-| **EMA Trendline** | Smoothed spectral movement estimate |
-
----
-
 ### Session Timeline Segmentation
 
 The session timeline converts continuous audio into classified behavioral regions using rolling-window feature analysis.
