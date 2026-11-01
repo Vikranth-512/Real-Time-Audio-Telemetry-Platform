@@ -49,7 +49,7 @@ graph TD
 
 ###  Professional Analytic/intelligence Metrics from Raw Audio Samples
 - **React + Vite Frontend**: High-performance, responsive UI crafted with a dark navy aesthetic.
-- **Live Visualizations**: Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
+- **Live Visualizations**: multiple live audio analylitic views including Synchronized scrolling oscilloscope (waveform),frequency spectrum (FFT) and zcr/rms/amp charts.
 - **Session Management**: Live dashboard allows users to seamlessly switch subscriptions between active telemetry sessions.
 
 <img width="1878" height="906" alt="Screenshot (443)" src="https://github.com/user-attachments/assets/c01a97de-e792-42a0-a538-c1281f34453b" />
@@ -79,16 +79,6 @@ This architecture has been heavily optimized for low-latency, real-time audio te
 | **WebSocket Heartbeat** | `30 s` | Application-level ping keeps connection alive through reverse proxies |
 | **Redis Stream Depth** | `50 msgs` | Bounded `MAXLEN` per session prevents unbounded memory growth |
 
-
-* **True Zero-Wait Capture:** Replaced traditional busy-polling with thread-safe asynchronous event signaling (`asyncio.Event`), ensuring network dispatch triggers the exact microsecond a hardware audio frame is captured.
-
-* **Zero-Copy JSON Pipeline:** Completely eradicated array serialization bottlenecks on the backend. High-density float arrays (48kHz samples) bypass FastAPI's main event loop using raw string pass-throughs and f-string assembly, drastically reducing CPU load and Garbage Collection pauses.
-* **Optimized DSP Overhead:** Mathematical pipelines were refactored to eliminate redundant operations. Complex transforms (like 1024-point FFTs) are computed exactly once per packet and shared across all spectral and frequency metric engines.
-
-* **Vsync-Locked WebGL Rendering:** The dashboard achieves a locked 60/120 FPS by decoupling the visual render loop from the network packet rate. Using pre-allocated GPU vertex buffers and spring-physics interpolation, the waveform remains perfectly smooth regardless of network flutter.
-
-* **Temporal Network Resilience:** End-to-end packet sequence tracking ensures that stale, replayed, or out-of-order packets are instantly dropped by the UI, guaranteeing a mathematically accurate and jitter-free waveform display.
-
 ## Session Intelligence Engine
 
 The Session Intelligence Engine is a high-level acoustic analytics layer built on top of the real-time audio processing pipeline.
@@ -117,64 +107,6 @@ This enables real-time classification of acoustic behavior, environmental instab
 
 ### Core Intelligence Modules
 
-### Dominant Pattern
-
-Represents the overall signal structure detected across the session timeline.
-
-### Tonality Classification
-
-Determines whether the signal behaves harmonically or resembles broadband noise.
-
-### Derived From
-
-- ZCR variance
-- Frequency consistency
-- Harmonic continuity
-
-### Stability Class
-
-Measures long-term consistency of spectral and energy behavior.
-
-### Computed Using
-
-- RMS variance
-- Frequency variance
-- Temporal continuity
-
-## Activity Class
-
-Estimates overall acoustic intensity and session occupancy.
-
-### Derived From
-
-- Burst density
-- Energy occupancy
-- Signal persistence
-
-### Spike Profile
-
-Detects transient high-energy acoustic events.
-
-### Detection Logic
-
-- RMS deviation thresholds
-- Sudden amplitude excursions
-- Short-duration spectral anomalies
-
-### Drift Profile
-
-Tracks long-term spectral movement using EMA-smoothed dominant frequency analysis.
-
-### Frequency Drift Analysis
-
-The frequency drift subsystem continuously monitors dominant spectral movement over time.
-
-### Features
-
-- Real-time dominant frequency tracing
-- EMA (Exponential Moving Average) smoothing
-- Drift slope estimation
-- Long-term spectral stability analysis
 
 ---
 
@@ -216,18 +148,6 @@ flowchart LR
     class G output;
 ```
 
-
-### Derived Drift Metrics
-
-| Metric | Description |
-|---|---|
-| **Slope (Hz/sample)** | Long-term directional frequency movement |
-| **Burst Density** | Frequency instability occurrence rate |
-| **Variance Spread** | Frequency dispersion across the session |
-| **EMA Trendline** | Smoothed spectral movement estimate |
-
----
-
 ### Session Timeline Segmentation
 
 The session timeline converts continuous audio into classified behavioral regions using rolling-window feature analysis.
@@ -248,73 +168,143 @@ Each segment is dynamically categorized based on spectral activity and energy di
 
 ---
 
-### Acoustic Intelligence Observations
+## Timeline Analysis Engine
 
-The engine generates contextual observations by combining multiple signal features and temporal metrics.
+The Timeline Analysis Engine transforms raw acoustic metrics into a structured, observability-grade interpretation of session behavior. Rather than simply plotting RMS values over time, the engine performs multi-stage signal analysis to identify activity patterns, environmental shifts, anomalies, behavioral phases, and long-term trends.
 
-### Example Observations
-
-- Moderate spike activity detected
-- Noisy broadband environment identified
-- Significant frequency drift observed
-- Chaotic acoustic regions detected
+<img width="1852" height="835" alt="image" src="https://github.com/user-attachments/assets/ea75c5af-1cc2-467c-8c93-2e75bccd3b32" />
+<img width="1816" height="674" alt="Screenshot (470)" src="https://github.com/user-attachments/assets/8a93d68e-e5da-4288-b8bc-6c4b7862ed87" />
 
 ---
 
-### Observation Confidence Scoring
+### Multi-Timescale Baseline Modeling
 
-Each observation is assigned a confidence score derived from:
+The analyzer maintains independent baseline models to separate short-term activity from long-term environmental conditions.
 
-- Statistical certainty
-- Feature agreement
-- Temporal persistence
+#### Fast Baseline
+- Detects local activity changes
+- Powers Active/Burst classification
+- Preserves responsiveness to transient events
 
----
+#### Slow Baseline
+- Models the underlying acoustic environment
+- Used for environmental shift detection
+- Prevents sustained activity from being absorbed into the baseline
 
-### Distribution Analysis
+This dual-timescale architecture allows the system to distinguish between different acoustic behaviors:
 
-Histogram-based distribution analytics are generated for:
-
-- RMS energy
-- Amplitude
-- Zero Crossing Rate (ZCR)
-
-These distributions help identify:
-
-- Energy concentration patterns
-- Dynamic range spread
-- Noise dominance
-- Silence occupancy
-- Signal consistency
+| Scenario | Classification |
+|-----------|---------------|
+| Short loud spike | Burst |
+| Sustained conversation | Active |
+| Permanent environmental change | Environment Shift |
+| Stable ambient sound | Steady |
 
 ---
 
-### Signal Overview Visualization
+### Structural Phase Segmentation
 
-The intelligence dashboard visualizes synchronized acoustic features over time.
+The analyzer converts low-level state transitions into human-readable behavioral phases.
 
-### Visualized Metrics
+Example phase sequence:
 
-- RMS energy trace
-- Amplitude envelope
-- ZCR evolution
-- Spike markers
-- Silence gaps
-- Spectral transitions
+```text
+Steady State
+    ↓
+Sustained Activity
+    ↓
+Burst Cluster
+    ↓
+Steady State
+```
+
+Each phase contains:
+
+- Start time
+- End time
+- Duration
+- Confidence score
 
 ---
 
-### Enables Rapid Identification Of
+## Validation & Reliability
 
-- Acoustic instability
-- Sudden transient events
-- Environmental noise shifts
-- Silence-to-activity transitions
-- Sustained harmonic regions
+Validation focuses on:
+
+- False-positive suppression
+- False-negative reduction
+- Baseline stability
+- Event accuracy
+- Environment shift reliability
+- Timeline confidence correctness
 
 ---
 
-### Technical Characteristics
+## Output Schema
+
+The analyzer produces a structured session interpretation:
+
+```json
+{
+  "baseline": {},
+  "distribution": {},
+  "segments": [],
+  "events": [],
+  "anomalies": [],
+  "phases": [],
+  "insights": {},
+  "summary": ""
+}
+```
+
+### Output Components
+
+| Component | Description |
+|------------|------------|
+| baseline | Session-wide acoustic baseline metrics |
+| distribution | Percentage distribution of activity states |
+| segments | Classified timeline segments |
+| events | Extracted acoustic events |
+| anomalies | Clustered anomaly detections |
+| phases | Human-readable behavioral phases |
+| insights | Derived observability metrics |
+| summary | Fact-based narrative description |
+
+---
+
+## Design Goals
+
+The Timeline Analysis Engine is designed around the following principles:
+
+- Deterministic results
+- Explainable classifications
+- Low false-positive rates
+- Robust handling of missing data
+- Real-time compatibility
+- Observability-grade interpretability
+- Frontend-stable API contract
+- Human-readable outputs
+- Statistically robust analysis
+
+---
+
+### Role in the Platform
+
+The Timeline Analysis Engine serves as the intelligence layer that converts raw acoustic measurements into meaningful operational insights.
+
+It enables users to understand not only **what happened**, but also:
+
+- How the acoustic environment evolved
+- When meaningful events occurred
+- Whether environmental conditions changed
+- How stable or dynamic a session was
+- Which anomalies were structurally significant
+
+By combining signal processing, statistical modeling, anomaly detection, and semantic interpretation, the engine transforms raw audio metrics into actionable observability insights.
+
+---
+
+## Technical Characteristics
 
 | Capability | Description |
 |---|---|
@@ -344,38 +334,6 @@ The intelligence dashboard visualizes synchronized acoustic features over time.
 4. **Storage**: Analyzed metrics are batch-inserted into PostgreSQL while raw samples are flushed to Parquet files.
 5. **Broadcasting**: A global async broadcaster reads processed metrics from Redis and fans them out to connected dashboard WebSockets.
 6. **Data Export**: The dashboard or external clients can request session data exports via REST API, retrieving historical session metrics and raw data in structured formats like JSON or CSV.
-
-### 🧮Advanced Metrics Engine (DSP)
-The custom DSP engine (`MetricsEngine`) performs continuous processing on 1024-sample packets:
-- **Time-Domain Analysis**: RMS Energy, Peak Amplitude, Zero-Crossing Rate (ZCR).
-- **Frequency-Domain Analysis (FFT)**: Peak Frequency estimation, Spectral Centroid, Spectral Rolloff (85%), and Spectral Flatness.
-- **Rhythm Detection**: Autocorrelation-based BPM calculation utilizing an energy envelope over time.
-
-###  High-Performance Storage Layer
-- **PostgreSQL Database**: Persistent storage for downsampled time-series audio metrics and session lifecycle management, accessed asynchronously via `asyncpg`.
-- **Parquet Raw Storage**: Efficient columnar storage implementation for high-volume raw audio samples, optimizing disk I/O and enabling deep historical analysis.
-- **Data Export**: Dedicated API endpoints for exporting session metrics and averages in JSON and CSV formats.
-## 📊 Session Computation & Analysis Assumptions
-
-The `MetricsEngine` executes an array of computations locally, abiding by the following assumptions and constraints for accuracy and performance:
-
-### Baseline Normalizations
-- **ADC Scaling**: Assumes hardware feeds 12-bit audio samples centered at `2048`. The engine applies an offset and scales values to a normalized `[-1.0, 1.0]` float range.
-- **Sampling Parameters**: Default operations assume a uniform `48,000 Hz` sampling rate. Processing runs in discrete chunks (packets) of `1024` samples.
-- **Windowing**: A standard Hann Window is applied to the time-domain data prior to FFT conversion to minimize spectral leakage at the chunk boundaries.
-
-### Analysis Thresholds & Constraints
-- **Silence Gating**: An RMS threshold of `0.005` is utilized. If a packet's RMS energy falls beneath this value, the packet is flagged as silent, and all respective metrics (frequency, BPM, centroids) are zeroed out to prevent noise amplification.
-- **Frequency Bounds**: For peak frequency analysis, spectral bins are constrained between `20 Hz` and `5000 Hz` to reject DC bias (0 Hz) and extreme high-frequency hardware noise.
-- **Spectral Rolloff**: Computed dynamically targeting **85%** of the total signal energy distribution.
-
-### Rhythm (BPM) Autocorrelation
-- **Energy Envelope**: Computed sequentially across rolling buffers. A minimum history of 60 packets is required before BPM calculation initiates.
-- **Beat Constraints**: Valid peak intervals are filtered to bounds between `0.3s` and `1.5s` to strictly yield physiological or musical tempos lying between `40` and `200` BPM.
-
-### Session Aggregations
-- **Post-Session Summaries**: When exporting or querying a finalized session via the REST API, the system computes arithmetic averages spanning all collected rows for RMS energy, Peak Amplitude, and BPM to characterize the holistic session profile.
-  
 
 ## 🚀 Getting Started
 
