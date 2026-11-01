@@ -18,11 +18,19 @@ class MetricsEngine:
 
     SILENCE_THRESHOLD = 0.005
 
-    def __init__(self):
-
-        self.sample_buffer = deque(maxlen=48000)
-        self.energy_buffer = deque(maxlen=400)
+    def __init__(self, sample_rate: int = 48000):
+        self.sample_rate = int(sample_rate)
+        self.envelope_rate = self.sample_rate / self.PACKET_SIZE
+        self.sample_buffer = deque(maxlen=self.sample_rate)
+        self.energy_buffer = deque(maxlen=max(50, int(8.5 * self.envelope_rate)))
         self.beat_intervals = deque(maxlen=10)
+
+    def set_sample_rate(self, sample_rate: int) -> None:
+        self.sample_rate = int(sample_rate)
+        self.envelope_rate = self.sample_rate / self.PACKET_SIZE
+        self.sample_buffer = deque(maxlen=self.sample_rate)
+        self.energy_buffer = deque(maxlen=max(50, int(8.5 * self.envelope_rate)))
+        self.reset()
 
     def _hann_window(self, n: int) -> np.ndarray:
         if n <= 1:
@@ -45,7 +53,7 @@ class MetricsEngine:
 
         spec = np.fft.rfft(data)
         mags = np.abs(spec)
-        freqs = np.fft.rfftfreq(n, 1 / self.SAMPLE_RATE)
+        freqs = np.fft.rfftfreq(n, 1.0 / self.sample_rate)
 
         return freqs, mags
 
@@ -207,7 +215,7 @@ class MetricsEngine:
         if len(peaks) < 3:
             return 0.0
 
-        env_rate = self.ENVELOPE_RATE
+        env_rate = self.envelope_rate
         intervals = []
 
         for i in range(1, len(peaks)):
